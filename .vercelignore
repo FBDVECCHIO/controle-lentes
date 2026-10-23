@@ -1,0 +1,13 @@
+medicos/
+*.xlsx
+*.csv
+*.pdf
+output.txt
+dev_server.js
+inspect*.js
+concatenate*.js
+generator.js
+test_*.js
+find_column.js
+screenshot_*.png
+.git*

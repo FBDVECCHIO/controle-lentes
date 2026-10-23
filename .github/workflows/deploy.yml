@@ -1,0 +1,56 @@
+name: CI/CD LensAudit Vercel Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  verify-and-deploy:
+    name: Verify & Deploy Pipeline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install --production=false
+
+      - name: Run Integrity & Security Check
+        run: |
+          node -e "
+            const backend = require('./api/backend');
+            if (typeof backend.backendFunctions.authenticateByPin !== 'function') {
+              throw new Error('Missing authenticateByPin');
+            }
+            if (typeof backend.backendFunctions.processarReconciliacao3Way !== 'function') {
+              throw new Error('Missing processarReconciliacao3Way');
+            }
+            console.log('✅ A.T.L.A.S. LensAudit integrity verification passed.');
+          "
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Environment Information
+        if: env.VERCEL_TOKEN != ''
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy to Vercel Production
+        if: env.VERCEL_TOKEN != ''
+        run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Manual do Usuário - Óticas Gestão Integrada</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary: #3B82F6;
+      --primary-hover: #2563EB;
+      --bg-primary: #F1F5F9;
+      --bg-secondary: #FFFFFF;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --border-color: #E2E8F0;
+      --success: #10B981;
+      --warning: #F59E0B;
+      --danger: #EF4444;
+      --card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 20px;
+    }
+
+    .wrapper {
+      max-width: 1000px;
+      margin: 0 auto;
+      background-color: var(--bg-secondary);
+      border-radius: 16px;
+      box-shadow: var(--card-shadow);
+      padding: 40px;
+      border: 1px solid var(--border-color);
+    }
+
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+    }
+
+    .logo-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      background-color: var(--primary);
+      color: white;
+      width: 45px;
+      height: 45px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .logo-text h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .logo-text p {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .btn-print {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+
+    .btn-print:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .menu-index {
+      background-color: var(--bg-primary);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 35px;
+      border: 1px solid var(--border-color);
+    }
+
+    .menu-index h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .menu-index ul {
+      list-style-type: none;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .menu-index a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .menu-index a:hover {
+      text-decoration: underline;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-top: 40px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 2px solid var(--border-color);
+      padding-bottom: 8px;
+    }
+
+    p {
+      font-size: 15px;
+      color: #334155;
+      margin-bottom: 16px;
+      text-align: justify;
+    }
+
+    .highlight-box {
+      background-color: #EFF6FF;
+      border-left: 4px solid var(--primary);
+      padding: 16px;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 20px;
+      font-size: 14px;
+      color: #1E3A8A;
+    }
+
+    .highlight-box.warning {
+      background-color: #FEF3C7;
+      border-left-color: var(--warning);
+      color: #78350F;
+    }
+
+    .highlight-box.success {
+      background-color: #ECFDF5;
+      border-left-color: var(--success);
+      color: #065F46;
+    }
+
+    .field-card {
+      background-color: var(--bg-primary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .field-card-title {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text-main);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .field-card-desc {
+      font-size: 13.5px;
+      color: #475569;
+    }
+
+    .step-list {
+      margin-left: 20px;
+      margin-bottom: 20px;
+    }
+
+    .step-list li {
+      margin-bottom: 10px;
+      font-size: 14.5px;
+      color: #334155;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      border-radius: 4px;
+      text-transform: uppercase;
+    }
+
+    .badge-primary { background-color: #DBEAFE; color: #1E40AF; }
+    .badge-secondary { background-color: #E2E8F0; color: #475569; }
+    .badge-success { background-color: #D1FAE5; color: #065F46; }
+    .badge-warning { background-color: #FEF3C7; color: #92400E; }
+    .badge-danger { background-color: #FEE2E2; color: #991B1B; }
+
+    /* Print styling rules */
+    @media print {
+      body {
+        background-color: white;
+        padding: 0;
+      }
+      .wrapper {
+        box-shadow: none;
+        border: none;
+        padding: 0;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="wrapper">
+    
+    <!-- Top Action Bar -->
+    <div class="header-bar">
+      <div class="logo-container">
+        <div class="logo-icon">
+          <i class="fa-solid fa-glasses"></i>
+        </div>
+        <div class="logo-text">
+          <h1>Manual do Usuário</h1>
+          <p>Sistema de Controle de Vendas e Lentes</p>
+        </div>
+      </div>
+      <button class="btn-print no-print" onclick="window.print()">
+        <i class="fa-solid fa-print"></i> Imprimir / Salvar PDF
+      </button>
+    </div>
+
+    <!-- Index -->
+    <div class="menu-index no-print">
+      <h3><i class="fa-solid fa-list-ol"></i> Índice de Conteúdo</h3>
+      <ul>
+        <li><a href="#login"><i class="fa-solid fa-right-to-bracket"></i> 1. Acesso ao Sistema</a></li>
+        <li><a href="#vendas"><i class="fa-solid fa-cart-shopping"></i> 2. Lançar Nova Venda</a></li>
+        <li><a href="#ocr"><i class="fa-solid fa-camera"></i> 3. Uso do OCR (Foto Receita)</a></li>
+        <li><a href="#log-vendas"><i class="fa-solid fa-history"></i> 4. Log de Vendas e Fechamento</a></li>
+        <li><a href="#conferencia"><i class="fa-solid fa-check-double"></i> 5. Conferência de Laboratório</a></li>
+        <li><a href="#resumo-lab"><i class="fa-solid fa-calculator"></i> 6. Resumo Lab & Divergências</a></li>
+        <li><a href="#medicos"><i class="fa-solid fa-user-doctor"></i> 7. Médicos, Representantes e Comissões</a></li>
+        <li><a href="#configuracoes"><i class="fa-solid fa-gears"></i> 8. Configurações Administrativas</a></li>
+      </ul>
+    </div>
+
+    <!-- Section 1 -->
+    <div class="section-title" id="login">
+      <i class="fa-solid fa-right-to-bracket"></i> 1. Acesso ao Sistema (Login)
+    </div>
+    <p>O acesso ao sistema é restrito e seguro. Cada funcionário possui suas próprias credenciais cadastradas pelo administrador.</p>
+    
+    <div class="field-card">
+      <div class="field-card-title"><i class="fa-solid fa-user"></i> Campo: Usuário</div>
+      <div class="field-card-desc">Digite o seu nome de usuário único (ex: <code>admin</code> ou <code>vendedor.joao</code>). Letras maiúsculas ou minúsculas não geram erro de login.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title"><i class="fa-solid fa-key"></i> Campo: Senha</div>
+      <div class="field-card-desc">Insira a sua senha cadastrada. A senha é confidencial e protege suas vendas.</div>
+    </div>
+    
+    <div class="highlight-box">
+      <strong>Dica:</strong> Se você esquecer suas credenciais, peça ao administrador do sistema para redefinir sua senha na sub-aba <strong>Usuários</strong> dentro do menu de Configurações.
+    </div>
+
+    <!-- Section 2 -->
+    <div class="section-title" id="vendas">
+      <i class="fa-solid fa-cart-shopping"></i> 2. Como Lançar uma Nova Venda
+    </div>
+    <p>Este módulo é utilizado pelos vendedores para registrar as vendas de óculos e lentes no sistema no momento do atendimento.</p>
+    
+    <h3>Dados Gerais do Pedido</h3>
+    <div class="field-card">
+      <div class="field-card-title">Ordem de Serviço (OS)</div>
+      <div class="field-card-desc">Número identificador único impresso na sua guia de venda. <span class="badge badge-danger">Obrigatório</span></div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Data da Venda</div>
+      <div class="field-card-desc">Preenchido automaticamente com o dia atual, mas pode ser alterado se você estiver lançando uma venda retroativa.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Loja / Vendedor / Cliente</div>
+      <div class="field-card-desc">Selecione nos menus a sua filial de venda, seu nome de vendedor e digite o nome completo do cliente para cadastro.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Médico (CRM) / Comissão</div>
+      <div class="field-card-desc">Selecione o médico que prescreveu a receita. Se a venda possuir comissão para o médico, marque a opção "Sim"; caso contrário, marque "Não" para não gerar cálculos extras de comissão.</div>
+    </div>
+
+    <h3>Dados da Compra - Aro 1 e Aro 2 (Se ativo)</h3>
+    <p>Se o cliente comprou um único óculos, preencha apenas os dados do <strong>Aro 1</strong>. Caso o cliente participe da promoção de "dobro venda" ou adquira um segundo óculos na mesma OS, ative a caixa <strong>"Ativar Aro 2 (Opção Dobro Venda)"</strong>.</p>
+    
+    <div class="field-card">
+      <div class="field-card-title">Laboratório</div>
+      <div class="field-card-desc">Selecione o laboratório parceiro que irá fabricar as lentes. Os campos de Lente e Tratamento serão atualizados automaticamente com os produtos disponíveis neste laboratório.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Seletor de Lente (Híbrido - Autopreencher ou Digitação Livre)</div>
+      <div class="field-card-desc">Clique para ver as sugestões de lentes cadastradas na base ou **digite livremente** o nome de qualquer lente que não esteja cadastrada ainda. Se o item estiver cadastrado, o preço é trazido automaticamente. Caso contrário, você pode digitar o preço manual no campo correspondente.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Seletor de Tratamento (Híbrido) / Checkbox Sem Tratamento</div>
+      <div class="field-card-desc">Escolha o tratamento adicional da lente filtrando na lista de sugestões ou **digitando livremente**. Caso a lente já possua tratamento embutido ou não leve nenhum, marque a caixa <strong>"Sem Tratamento"</strong>. Isso desabilitará o campo de tratamento e zerará o preço correspondente de forma correta.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Quantidade (Qtdd)</div>
+      <div class="field-card-desc">Selecione <code>1 (Par)</code> para o par de lentes completo ou <code>0.5 (Meio)</code> se o cliente estiver trocando a lente de apenas um dos lados do óculos. O sistema irá calcular metade do preço da lente padrão se você escolher <code>0.5</code>.</div>
+    </div>
+
+    <div class="highlight-box success">
+      <strong>Copiar Anterior (Aro 2)</strong>: Ao registrar um segundo óculos (Aro 2), clique no botão <strong>"Copiar Anterior"</strong> para copiar rapidamente todas as escolhas de Lente, Tratamento, Quantidade e Graus feitas no Aro 1.
+    </div>
+
+    <h3>Graus da Receita (Dioptrias)</h3>
+    <div class="field-card">
+      <div class="field-card-title">Longe OD (Olho Direito) e Longe OE (Olho Esquerdo)</div>
+      <div class="field-card-desc">Digite os valores de grau <strong>Esférico (Esf)</strong>, <strong>Cilíndrico (Cil)</strong> e <strong>Eixo</strong> do olho direito e esquerdo para longe. Use o sinal negativo (-) para o cilíndrico e esférico miópico.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Altura e DNP (OD / OE)</div>
+      <div class="field-card-desc">Medidas de montagem tomadas fisicamente pelo vendedor na mesa de atendimento. Devem ser digitadas manualmente.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Adição</div>
+      <div class="field-card-desc">O valor do grau de perto em lentes multifocais.</div>
+    </div>
+
+    <h3>Resumo Financeiro</h3>
+    <div class="field-card">
+      <div class="field-card-title">R$ Lente e R$ Tratamento</div>
+      <div class="field-card-desc">Preços unitários trazidos automaticamente da base de produtos, multiplicados pela quantidade selecionada. Podem ser editados caso seja negociado um desconto direto.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Valor Pago / Valor Residual / Forma de Pagamento</div>
+      <div class="field-card-desc">Insira a quantia paga de entrada no ato da compra e o saldo residual restante que ficará em aberto. Declare a forma utilizada (Dinheiro, Cartão, PIX, etc.). O sistema soma os totais de forma automática.</div>
+    </div>
+
+    <!-- Section 3 -->
+    <div class="page-break"></div>
+    <div class="section-title" id="ocr">
+      <i class="fa-solid fa-camera"></i> 3. Uso do Leitor Inteligente (Foto Receita - OCR)
+    </div>
+    <p>Para economizar tempo e evitar erros de digitação dos graus complexos da receita médica, utilize o leitor de imagem inteligente:</p>
+    
+    <ol class="step-list">
+      <li>Clique no botão <strong>"Foto Receita (OCR)"</strong>.</li>
+      <li>Se estiver no celular, o sistema abrirá a câmera para tirar uma foto nítida e bem focada da receita médica. Se estiver no computador, abrirá uma janela para você carregar a imagem da receita.</li>
+      <li>O sistema exibirá a mensagem de processamento e a porcentagem de leitura em tempo real.</li>
+      <li>Em poucos segundos, os campos de **Esférico, Cilíndrico e Eixo (OD e OE)**, além da **Adição**, serão preenchidos automaticamente!</li>
+    </ol>
+
+    <div class="highlight-box warning">
+      <strong>Informação Importante:</strong>
+      <ul>
+        <li><strong>Altura e DNP</strong>: A leitura automática **não preenche** estes dados, mantendo os campos vazios. Isso é intencional e seguro, pois Altura e DNP dependem do ajuste da armação no rosto de cada cliente, devendo ser inseridos manualmente pelo vendedor.</li>
+        <li><strong>Dedução da Adição</strong>: Se a receita médica declarar os valores de Longe e de Perto separadamente (ao invés de declarar a Adição pronta), a inteligência do sistema calcula automaticamente a diferença matemática: <code>Adição = Perto (Esférico) - Longe (Esférico)</code> e preenche o valor calculado direto no campo Adição.</li>
+      </ul>
+    </div>
+
+    <!-- Section 4 -->
+    <div class="section-title" id="log-vendas">
+      <i class="fa-solid fa-history"></i> 4. Log de Vendas e Fechamento Diário
+    </div>
+    <p>Exibe o histórico de todas as vendas lançadas. Você pode filtrar a tabela por período de datas, loja ou vendedor.</p>
+    
+    <div class="field-card">
+      <div class="field-card-title">Excluir uma Venda Errada</div>
+      <div class="field-card-desc">Se você cometeu um erro ao lançar uma venda, localize a linha da venda correspondente e clique no botão vermelho de **Excluir** (Lixeira) no canto direito. O item será excluído na hora do banco de dados de forma segura.</div>
+    </div>
+
+    <div class="field-card">
+      <div class="field-card-title">Fechamento do Dia por WhatsApp</div>
+      <div class="field-card-desc">Desenvolvido principalmente para dispositivos móveis:
+        <ol>
+          <li>Selecione o contato na lista suspensa (dropdown).</li>
+          <li>Clique no botão **"Enviar Resumo do Dia em PDF"**.</li>
+          <li>O sistema gerará o relatório PDF do faturamento do dia no Google Drive e abrirá o WhatsApp diretamente com a mensagem de fechamento pronta para envio.</li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="field-card">
+      <div class="field-card-title">Exportar para PDF (Desktop / Computador)</div>
+      <div class="field-card-desc">Se você estiver em um computador de mesa ou notebook, use o botão **"Exportar para PDF"**. Ele gera o fechamento e abre o PDF em uma nova aba do navegador para visualização, impressão ou envio manual por e-mail.</div>
+    </div>
+
+    <!-- Section 5 -->
+    <div class="page-break"></div>
+    <div class="section-title" id="conferencia">
+      <i class="fa-solid fa-check-double"></i> 5. Conferência de Laboratório
+    </div>
+    <p>Este módulo é utilizado pela equipe técnica ou laboratório interno para auditar se as lentes fabricadas e entregues condizem perfeitamente com a prescrição médica vendida.</p>
+    
+    <div class="field-card">
+      <div class="field-card-title">ID Lab</div>
+      <div class="field-card-desc">O número do pedido interno gerado pela ordem do laboratório. <span class="badge badge-danger">Obrigatório</span></div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Pedido Oficial (Dioptria Vendida) vs Pedido Adaptado (Entregue)</div>
+      <div class="field-card-desc">Preencha no primeiro bloco os graus que foram de fato prescritos pelo médico (ou clique em Copiar Longe). No bloco do "Pedido Adaptado", registre os graus que o laboratório de fato entregou (caso tenha havido necessidade de transposição ou ajuste). Os campos de Lente Oficial, Lente Efetiva e Tratamentos suportam tanto a seleção de itens cadastrados da lista quanto a **digitação livre** de novos produtos.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Divergência de Grau Encontrada</div>
+      <div class="field-card-desc">Se você identificar que os graus vieram com diferenças fora do limite aceitável, marque a caixa **"Divergência de Grau Encontrada"** para auditorias de qualidade.</div>
+    </div>
+
+    <!-- Section 6 -->
+    <div class="section-title" id="resumo-lab">
+      <i class="fa-solid fa-calculator"></i> 6. Resumo Lab & Relatório de Divergências
+    </div>
+    <p>Painel gerencial que analisa financeiramente a operação técnica com os laboratórios parceiros.</p>
+    
+    <div class="field-card">
+      <div class="field-card-title">KPIs de Economia</div>
+      <div class="field-card-desc">Exibe o faturamento total que deveria ter sido cobrado oficialmente, o que foi cobrado efetivamente (preço praticado após negociações) e a **Economia Geral** em Reais e em porcentagem (%).</div>
+    </div>
+    
+    <div class="field-card">
+      <div class="field-card-title">Divergências Detalhadas e Exportação</div>
+      <div class="field-card-desc">Tabela detalhada listando OS, Loja, Laboratório e o valor final de economia gerada. Clique em **"Exportar PDF"** para gerar um relatório em folha A4 otimizado, que exibe a coluna final renomeada como **"Economia"** para apresentação gerencial de economia de custos.</div>
+    </div>
+
+    <!-- Section 7 -->
+    <div class="section-title" id="medicos">
+      <i class="fa-solid fa-user-doctor"></i> 7. Médicos, Representantes e Comissões
+    </div>
+    <p>Aba de relacionamento médico e vendas. Permite ver quais profissionais da saúde mais prescrevem lentes que resultam em vendas na sua ótica.</p>
+    
+    <div class="field-card">
+      <div class="field-card-title">KPI de Ticket Médio por OS</div>
+      <div class="field-card-desc">Exibe o valor médio gasto pelos clientes em cada compra qualificada associada a prescrições médicas.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Comissões de Médicos e Representantes</div>
+      <div class="field-card-desc">Tabelas detalhadas de quanto cada médico e representante acumulou de comissões no período selecionado, baseadas em regras de faturamento configuradas. Permite exportar tabelas de repasse em PDF.</div>
+    </div>
+    <div class="field-card">
+      <div class="field-card-title">Gráficos de Faturamento (Rankings)</div>
+      <div class="field-card-desc">Gráficos de barra horizontais interativos mostrando o ranking dos TOP Médicos e TOP Representantes que mais trazem faturamento para a ótica.</div>
+    </div>
+
+    <!-- Section 8 -->
+    <div class="page-break"></div>
+    <div class="section-title" id="configuracoes">
+      <i class="fa-solid fa-gears"></i> 8. Configurações Administrativas
+    </div>
+    <p>Acesso exclusivo para administradores configurarem os dados fundamentais do sistema:</p>
+    
+    <ul>
+      <li><strong>Minha Conta</strong>: Altere seu nome de usuário de acesso e atualize sua senha.</li>
+      <li><strong>Usuários</strong>: Gerencie quem tem acesso ao sistema, definindo permissões específicas (Pode lançar vendas? Pode fazer conferência de laboratório? Tem acesso administrativo?). Se o campo de senha for deixado em branco ao editar um usuário, a senha anterior dele será preservada com segurança.</li>
+      <li><strong>Lojas, Laboratórios e Vendedores</strong>: Cadastre ou remova filiais, laboratórios terceirizados e funcionários de vendas.</li>
+      <li><strong>Representantes</strong>: Cadastro de representantes de laboratório para comissionamento.</li>
+      <li><strong>Produtos</strong>: Tabela de preços de Lentes e Tratamentos.</li>
+      <li><strong>Médicos</strong>: Cadastre novos médicos prescritores com seus respectivos CRMs e especialidades.</li>
+      <li><strong>Logotipo do App</strong>: Permite realizar o upload de uma imagem do seu computador ou link web. O logotipo substituirá automaticamente os ícones padrão na tela de login, barra lateral e menu do sistema, personalizando o app com a marca da sua ótica.</li>
+      <li><strong>Contatos Resumo</strong>: Cadastre os números de telefone de diretores, gerentes ou contatos aptos a receberem o fechamento diário consolidado em PDF.</li>
+      <li><strong>Parâmetros</strong>: Ajuste o tempo padrão de inatividade (timeout) para deslogar do sistema por motivos de segurança.</li>
+    </ul>
+
+    <hr style="border: none; border-bottom: 2px solid var(--border-color); margin-top: 50px; margin-bottom: 20px;">
+    <div style="text-align: center; font-size: 13px; color: var(--text-muted);">
+      <p style="text-align: center;">Óticas Gestão Integrada © 2026 - Manual de Operação e Uso.</p>
+    </div>
+
+  </div>
+
+</body>
+</html>

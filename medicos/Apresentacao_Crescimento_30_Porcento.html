@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apresentação: Plano de Crescimento +30% na Prescrição Médica</title>
+  <style>
+    @font-face {
+      font-family: 'Humanist 777 Cn BT';
+      src: local('Humanist 777 Cn BT'), local('Humanist 777 Condensed BT'), local('Frutiger Condensed'), local('Arial Narrow');
+    }
+    :root {
+      --primary: #0a2540;
+      --accent: #0066ff;
+      --gold: #f59e0b;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --font-family: 'Humanist 777 Cn BT', 'Humanist 777 Condensed BT', 'Frutiger Condensed', 'Arial Narrow', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-family);
+      background: #0f172a;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+    .deck-container {
+      width: 100%;
+      max-width: 1100px;
+      height: 618px;
+      background: var(--bg);
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .slide {
+      display: none;
+      width: 100%;
+      height: 100%;
+      padding: 30px 45px 20px 45px;
+      flex-direction: column;
+      justify-content: space-between;
+      position: absolute;
+      top: 0; left: 0;
+      animation: fadeIn 0.3s ease;
+    }
+    .slide.active { display: flex; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Top Bar */
+    .top-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 6px;
+      background: var(--accent);
+    }
+    .slide-header { margin-bottom: 15px; }
+    .slide-tag {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .slide-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--primary);
+      text-transform: uppercase;
+      line-height: 1.1;
+    }
+    .slide-subtitle {
+      font-size: 15px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* Content Layouts */
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+    .card-val { font-size: 28px; font-weight: 800; color: var(--primary); margin: 6px 0; }
+    .card-val.blue { color: var(--accent); }
+    .card-val.gold { color: var(--gold); }
+    .card-val.red { color: #dc2626; }
+    .card-val.green { color: #16a34a; }
+    .card-desc { font-size: 12.5px; color: var(--text); line-height: 1.4; }
+
+    .callout {
+      background: #eff6ff;
+      border: 1.5px solid var(--accent);
+      border-radius: 10px;
+      padding: 16px 20px;
+    }
+    .callout.green { background: #f0fdf4; border-color: #22c55e; }
+    .callout.red { background: #fef2f2; border-color: #ef4444; }
+
+    /* Dark Slide 1 and 10 */
+    .slide.dark {
+      background: var(--primary);
+      color: #ffffff;
+    }
+    .slide.dark .slide-title { color: #ffffff; }
+    .slide.dark .slide-subtitle { color: #94a3b8; }
+
+    /* Footer */
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--muted);
+      border-top: 1px solid #e2e8f0;
+      padding-top: 10px;
+    }
+    .slide.dark .slide-footer { border-color: #334155; color: #64748b; }
+
+    /* Navigation Controls */
+    .controls {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+      align-items: center;
+    }
+    .btn-nav {
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: var(--font-family);
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-nav:hover { opacity: 0.9; }
+    .page-indicator { color: #94a3b8; font-size: 15px; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <div class="deck-container">
+    <div class="top-bar"></div>
+
+    <!-- SLIDE 1: CAPA -->
+    <div class="slide dark active" id="slide-1">
+      <div style="margin-top: 30px; border-left: 6px solid var(--accent); padding-left: 25px;">
+        <div style="font-size: 20px; font-weight: 800; color: var(--gold); letter-spacing: 2px;">PROJETO EXPANSÃO +30%</div>
+        <div style="font-size: 46px; font-weight: 800; line-height: 1.1; margin: 12px 0;">ESTRATÉGIA COMERCIAL &<br>PRODUTIVIDADE MÉDICA</div>
+        <div style="font-size: 19px; color: #cbd5e1; max-width: 850px;">Diagnóstico da Carteira, Eliminação de Ociosidade e Metas de Aceleração nos Oftalmologistas</div>
+      </div>
+      <div class="slide-footer">
+        <div>EQUIPE COMERCIAL: SILVIA & ÂNGELO | CAMPINAS E RMC</div>
+        <div>SLIDE 01 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 2: RAIO-X ATUAL -->
+    <div class="slide" id="slide-2">
+      <div class="slide-header">
+        <div class="slide-tag">Diagnóstico Quadrimestral (Junho a Setembro/2026)</div>
+        <div class="slide-title">ONDE ESTAMOS: R$ 2,10 MILHÕES FATURADOS</div>
+        <div class="slide-subtitle">Raio-x da produção consolidada por médico e representante</div>
+      </div>
+      <div class="grid-4">
+        <div class="card">
+          <div class="card-title">Faturamento Total</div>
+          <div class="card-val">R$ 2,10M</div>
+          <div class="card-desc">Média de R$ 526,2k/mês no quadrimestre</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Médicos Prescritores</div>
+          <div class="card-val blue">130 Docs</div>
+          <div class="card-desc">Médicos ativos nas listas comissionadas</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Silvia (Produção)</div>
+          <div class="card-val">R$ 602,7k</div>
+          <div class="card-desc">64 médicos ativos | Tíquete R$ 9,4k</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Ângelo (Produção)</div>
+          <div class="card-val gold">R$ 1,50M</div>
+          <div class="card-desc">66 médicos ativos | Tíquete R$ 22,8k</div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top: 12px;">
+        <strong style="color: var(--accent); font-size: 14px;">💡 INSIGHT ESTRATÉGICO:</strong>
+        <p style="font-size: 12.5px; margin-top: 4px; color: var(--text);">
+          A base prescritora atual é altamente fiel (130 médicos geram mais de R$ 2,1 milhões). O crescimento de 30% não exige dobrar a equipe, mas sim converter parte dos 230 médicos cadastrados que hoje têm ZERO prescrição e elevar o tíquete da Silvia.
+        </p>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 02 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: O ALVO +30% -->
+    <div class="slide" id="slide-3">
+      <div class="slide-header">
+        <div class="slide-tag">Metas Financeiras e Operacionais</div>
+        <div class="slide-title">O ALVO: +30% DE FATURAMENTO MÉDICO</div>
+        <div class="slide-subtitle">De onde virá a receita adicional de +R$ 157,8k por mês nos próximos 90 dias</div>
+      </div>
+      <div class="grid-2">
+        <div class="card" style="justify-content: center; text-align: center; padding: 25px;">
+          <div class="card-title">Faturamento Mensal Atual</div>
+          <div class="card-val" style="font-size: 26px;">R$ 526.259 / mês</div>
+          <div style="font-size: 24px; color: var(--accent); margin: 8px 0;">⬇ +30% DE META ⬇</div>
+          <div class="card-title" style="color: var(--accent);">Novo Faturamento Meta</div>
+          <div class="card-val blue" style="font-size: 36px;">R$ 684.137 / mês</div>
+          <div class="card-desc" style="font-weight: 700; color: var(--gold);">+R$ 157.878 adicionais todo mês</div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color: var(--primary); font-size: 15px; margin-bottom: 10px;">OS 4 PILARES DO CRESCIMENTO</div>
+          <div style="font-size: 12.5px; line-height: 1.7;">
+            <p><strong>1. Ativação de Inativos:</strong> Converter 15% dos 230 médicos visitados que não compram (+R$ 160k/mês).</p>
+            <p><strong>2. Mix & Tíquete Médio:</strong> Elevar o tíquete da Silvia com multifocais premium (+R$ 38k/mês).</p>
+            <p><strong>3. Eficiência em Campo:</strong> Bater 15 visitas/dia via Edifícios Médicos (+20% contatos).</p>
+            <p><strong>4. Expansão Eixo Sul:</strong> Captação em Indaiatuba, Valinhos e Vinhedo (+R$ 30k/mês).</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 03 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: PILAR 1 -->
+    <div class="slide" id="slide-4">
+      <div class="slide-header">
+        <div class="slide-tag">Pilar 1 — A Maior Alavanca Comercial</div>
+        <div class="slide-title">ATIVAR OS 230 MÉDICOS QUE NÃO PRESCREVEM</div>
+        <div class="slide-subtitle">Transformar médicos visitados sem venda em novos prescritores regulares</div>
+      </div>
+      <div class="grid-2">
+        <div class="callout red">
+          <div style="font-weight: 800; font-size: 15px; color: #991b1b;">SILVIA: 193 MÉDICOS SEM VENDA (75%)</div>
+          <div class="card-val red" style="font-size: 26px;">75% Inativo</div>
+          <div style="font-size: 12.5px; color: #7f1d1d;">Dos 257 médicos da carteira da Silvia, 193 recebem visitas de relacionamento mas não emitem pedidos de lentes.</div>
+        </div>
+        <div class="callout red" style="background: #fffbeb; border-color: var(--gold);">
+          <div style="font-weight: 800; font-size: 15px; color: #92400e;">ÂNGELO: 77 MÉDICOS SEM VENDA (54%)</div>
+          <div class="card-val gold" style="font-size: 26px;">54% Inativo</div>
+          <div style="font-size: 12.5px; color: #78350f;">Dos 143 médicos cadastrados do Ângelo, 77 estão inativos prontos para ativação comercial direcionada.</div>
+        </div>
+      </div>
+      <div class="callout green" style="margin-top: 12px;">
+        <strong style="font-size: 15px; color: #166534;">🎯 AÇÃO: CONVERTER 40 MÉDICOS INATIVOS (20 SILVIA + 20 ÂNGELO)</strong>
+        <p style="font-size: 12.5px; color: #14532d; margin-top: 4px;">
+          Se convertermos apenas 40 desses 230 médicos com um faturamento médio de R$ 4.000/mês cada:<br>
+          <strong>👉 40 médicos x R$ 4.000 = +R$ 160.000 / mês adicionais (Bate 101% da meta de +30% sozinhos!).</strong>
+        </p>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 04 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: PILAR 2 -->
+    <div class="slide" id="slide-5">
+      <div class="slide-header">
+        <div class="slide-tag">Pilar 2 — Valor Agregado</div>
+        <div class="slide-title">ELEVAÇÃO DO TÍQUETE MÉDIO E MIX DE LENTES</div>
+        <div class="slide-subtitle">Equalizando a metodologia de venda de alto valor entre os representantes</div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Disparidade Atual de Tíquete</div>
+          <div style="margin: 10px 0;">
+            <p style="font-size: 13px; color: var(--muted);">Tíquete Silvia: <strong style="color: var(--primary); font-size: 22px;">R$ 9.417</strong></p>
+            <p style="font-size: 13px; color: var(--muted); margin-top: 8px;">Tíquete Ângelo: <strong style="color: var(--accent); font-size: 22px;">R$ 22.762</strong> (+141%)</p>
+          </div>
+          <div class="card-desc">O Ângelo foca em cirurgiões e lentes de alta margem. A Silvia possui alto volume mas com mix básico.</div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color: var(--primary);">Ação de Upgrade de Mix</div>
+          <div style="font-size: 12.5px; line-height: 1.6; margin-top: 6px;">
+            <p>• Treinar Silvia na abordagem de <strong>multifocais digitais e tratamentos antirreflexo premium</strong>.</p>
+            <p>• Promover mentoria e compartilhamento de técnicas comerciais do Ângelo.</p>
+            <p>• <strong>Meta:</strong> Elevar o tíquete da Silvia em +25% (de R$ 9,4k para R$ 11,8k).</p>
+            <p style="font-weight: 700; color: var(--accent); margin-top: 6px;">👉 Ganho Adicional: +R$ 38.000 / mês na Silvia.</p>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top: 12px; text-align: center;">
+        <strong style="font-size: 15px; color: var(--primary);">🚀 PILARES 1 E 2 JUNTOS GERAM +R$ 198.000 / MÊS (SUPERA A META DE +30%)</strong>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 05 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 6: PILAR 3 -->
+    <div class="slide" id="slide-6">
+      <div class="slide-header">
+        <div class="slide-tag">Pilar 3 — Produtividade em Campo</div>
+        <div class="slide-title">ATINGIR O PADRÃO DE 15 VISITAS / DIA</div>
+        <div class="slide-subtitle">Estratégia de "Clustering Vertical" para eliminar tempo perdido no trânsito</div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">Média Atual de Campo</div>
+          <div style="margin: 10px 0;">
+            <p><strong>Silvia:</strong> 12,3 visitas/dia útil (Excelente regularidade, mas pode atingir 15).</p>
+            <p style="margin-top: 8px;"><strong>Ângelo:</strong> 10,5 visitas/dia útil (Ritmo abaixo do piso de 12 e dias em branco).</p>
+          </div>
+          <div class="callout green" style="padding: 10px;">
+            <strong>Meta da Equipe:</strong> 15 visitas/dia útil = 300 visitas/mês por representante (+20% de contatos).
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color: var(--accent);">A Tática: Clustering Vertical</div>
+          <div style="font-size: 12.5px; line-height: 1.5; margin-top: 6px;">
+            <p><strong>1. Mapeamento de Edifícios Médicos:</strong> Polos na Av. Barão de Itapura e Cambuí concentram até 12 oftalmologistas no mesmo prédio.</p>
+            <p><strong>2. Visitas em Bloco:</strong> Estacionar uma única vez e cobrir vários andares.</p>
+            <p><strong>3. -60% de Trânsito:</strong> Menos tempo no trânsito, mais tempo em frente ao médico.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 06 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 7: PILAR 4 -->
+    <div class="slide" id="slide-7">
+      <div class="slide-header">
+        <div class="slide-tag">Pilar 4 — Gestão e Dados</div>
+        <div class="slide-title">MONITORAMENTO EM TEMPO REAL NO APP</div>
+        <div class="slide-subtitle">Eliminar apagões de registro e garantir visibilidade total da carteira</div>
+      </div>
+      <div class="grid-2">
+        <div class="callout red">
+          <div style="font-weight: 800; font-size: 14px; color: #991b1b;">O GAP IDENTIFICADO NA AUDITORIA</div>
+          <div style="font-size: 12px; color: #7f1d1d; margin-top: 6px; line-height: 1.5;">
+            <p>• <strong>Apagão no App:</strong> Ângelo faturou R$ 732k em Ago/Set mas teve zero visitas lançadas no App após 03/08.</p>
+            <p>• <strong>10 Médicos Desconectados:</strong> R$ 38k faturados por médicos que não estavam cadastrados no App.</p>
+            <p>• <strong>Risco:</strong> Perda de controle sobre retorno de amostras e fidelização.</p>
+          </div>
+        </div>
+        <div class="callout green">
+          <div style="font-weight: 800; font-size: 14px; color: #166534;">NOVO PROTOCOLO DE COMPLIANCE</div>
+          <div style="font-size: 12px; color: #14532d; margin-top: 6px; line-height: 1.5;">
+            <p>• <strong>Lançamento Diário:</strong> 100% das visitas lançadas até as 19h com retorno agendado.</p>
+            <p>• <strong>Cadastro Imediato:</strong> Novos médicos prescritores cadastrados no mesmo dia.</p>
+            <p>• <strong>Acompanhamento Semanal:</strong> Cruzamento entre visitas e pedidos faturados.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 07 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 8: PILAR 5 -->
+    <div class="slide" id="slide-8">
+      <div class="slide-header">
+        <div class="slide-tag">Pilar 5 — Expansão Geográfica</div>
+        <div class="slide-title">EXPANSÃO NO EIXO SUL & POLO MÉDICO</div>
+        <div class="slide-subtitle">Captação de novos oftalmologistas em regiões de altíssimo poder aquisitivo</div>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-title" style="color: var(--accent);">Indaiatuba (Eixo Sul)</div>
+          <div class="card-val" style="font-size: 20px;">Prioridade 1</div>
+          <div class="card-desc">População de 260k hab., alta renda, clínicas consolidadas (IMO, Promédica). A 20 min de Campinas.<br><br><strong>Meta: +12 novos parceiros</strong></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color: var(--gold);">Valinhos & Vinhedo</div>
+          <div class="card-val gold" style="font-size: 20px;">Renda A/B</div>
+          <div class="card-desc">Maior IDH do estado (0,817). Pacientes com altíssima demanda por lentes premium.<br><br><strong>Meta: +8 novos parceiros</strong></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color: var(--primary);">Americana & Piracicaba</div>
+          <div class="card-val" style="font-size: 20px;">Grande Volume</div>
+          <div class="card-desc">Polos regionais com hospitais e clínicas de olhos de grande rotatividade.<br><br><strong>Meta: +10 novos parceiros</strong></div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 08 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 9: CRONOGRAMA -->
+    <div class="slide" id="slide-9">
+      <div class="slide-header">
+        <div class="slide-tag">Plano Tático de Execução</div>
+        <div class="slide-title">CRONOGRAMA DE EXECUÇÃO: PRÓXIMOS 30 DIAS</div>
+        <div class="slide-subtitle">Sprints semanais para implementação imediata e colheita rápida de resultados</div>
+      </div>
+      <div class="grid-4">
+        <div class="card" style="border-top: 5px solid var(--primary);">
+          <div style="font-weight: 800; color: var(--primary); font-size: 15px;">SEMANA 1</div>
+          <div style="font-size: 13px; font-weight: 700; margin: 6px 0; color: var(--accent);">Alinhamento</div>
+          <div class="card-desc">• Reunião de metas com Silvia e Ângelo.<br>• Cadastro dos 10 médicos novos.<br>• Definição dos 40 inativos.</div>
+        </div>
+        <div class="card" style="border-top: 5px solid var(--accent);">
+          <div style="font-weight: 800; color: var(--accent); font-size: 15px;">SEMANA 2</div>
+          <div style="font-size: 13px; font-weight: 700; margin: 6px 0; color: var(--accent);">Ataque Inativos</div>
+          <div class="card-desc">• Rota nos 40 inativos.<br>• Kit Boas-Vindas e benefício 1ª receita.<br>• Clustering em edifícios.</div>
+        </div>
+        <div class="card" style="border-top: 5px solid var(--gold);">
+          <div style="font-weight: 800; color: var(--gold); font-size: 15px;">SEMANA 3</div>
+          <div style="font-size: 13px; font-weight: 700; margin: 6px 0; color: var(--gold);">Mix Premium</div>
+          <div class="card-desc">• Treinamento de multifocais.<br>• Mentoria Silvia & Ângelo.<br>• Acompanhamento no App.</div>
+        </div>
+        <div class="card" style="border-top: 5px solid #16a34a;">
+          <div style="font-weight: 800; color: #16a34a; font-size: 15px;">SEMANA 4</div>
+          <div style="font-size: 13px; font-weight: 700; margin: 6px 0; color: #16a34a;">Expansão</div>
+          <div class="card-desc">• Prospecção em Indaiatuba.<br>• Fechamento do mês 1 (+15%).<br>• Ajuste fino de rotas.</div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 09 / 10</div>
+      </div>
+    </div>
+
+    <!-- SLIDE 10: CONCLUSÃO -->
+    <div class="slide dark" id="slide-10">
+      <div style="margin-top: 15px; border-left: 6px solid var(--gold); padding-left: 20px;">
+        <div style="font-size: 18px; font-weight: 800; color: var(--gold);">RESULTADO PROJETADO</div>
+        <div style="font-size: 36px; font-weight: 800; line-height: 1.1; margin: 8px 0;">+R$ 630.000 NO QUADRIMESTRE</div>
+        <div style="font-size: 16px; color: #cbd5e1;">Com a mesma equipe, otimização de rotas e disciplina comercial</div>
+      </div>
+      <div class="grid-3" style="margin-top: 15px;">
+        <div style="background: #1e293b; padding: 16px; border-radius: 8px; border: 1px solid #334155;">
+          <div style="font-size: 11px; color: #94a3b8; font-weight: 700;">1. ATIVAÇÃO INATIVOS</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--gold); margin: 4px 0;">+R$ 160k / mês</div>
+          <div style="font-size: 11.5px; color: #cbd5e1;">40 novos médicos x R$ 4.000</div>
+        </div>
+        <div style="background: #1e293b; padding: 16px; border-radius: 8px; border: 1px solid #334155;">
+          <div style="font-size: 11px; color: #94a3b8; font-weight: 700;">2. UPGRADE DE MIX</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--gold); margin: 4px 0;">+R$ 38k / mês</div>
+          <div style="font-size: 11.5px; color: #cbd5e1;">+25% no tíquete da Silvia</div>
+        </div>
+        <div style="background: #1e293b; padding: 16px; border-radius: 8px; border: 1px solid #334155;">
+          <div style="font-size: 11px; color: #94a3b8; font-weight: 700;">3. EXPANSÃO REGIONAL</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--gold); margin: 4px 0;">+R$ 30k / mês</div>
+          <div style="font-size: 11.5px; color: #cbd5e1;">Novos parceiros Indaiatuba/Valinhos</div>
+        </div>
+      </div>
+      <div style="text-align: center; margin-top: 12px; font-size: 16px; font-weight: 800; color: #ffffff;">
+        🚀 TOTAL ADICIONAL ESTIMADO: +R$ 228.000 / MÊS (+43% DE CRESCIMENTO POTENCIAL)
+      </div>
+      <div class="slide-footer">
+        <div>CONTROLE DE LENTES | COMERCIAL MÉDICO</div>
+        <div>SLIDE 10 / 10</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="controls">
+    <button class="btn-nav" onclick="prevSlide()">◀ Anterior</button>
+    <div class="page-indicator" id="page-indicator">Slide 1 de 10</div>
+    <button class="btn-nav" onclick="nextSlide()">Próximo ▶</button>
+    <button class="btn-nav" style="background: var(--gold); color: #000;" onclick="toggleFullscreen()">⛶ Tela Cheia</button>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 10;
+
+    function showSlide(n) {
+      document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+      const target = document.getElementById('slide-' + n);
+      if (target) target.classList.add('active');
+      document.getElementById('page-indicator').innerText = 'Slide ' + n + ' de ' + totalSlides;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) { currentSlide++; showSlide(currentSlide); }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) { currentSlide--; showSlide(currentSlide); }
+    }
+
+    function toggleFullscreen() {
+      const el = document.querySelector('.deck-container');
+      if (!document.fullscreenElement) {
+        el.requestFullscreen().catch(err => alert(err.message));
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+    });
+  </script>
+</body>
+</html>

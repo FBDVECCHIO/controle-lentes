@@ -1,0 +1,21 @@
+{
+  "name": "Gestão de Lentes e Vendas",
+  "short_name": "GestãoLentes",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#3B82F6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "logo-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "logo-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

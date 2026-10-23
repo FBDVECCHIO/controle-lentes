@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Manual de Implantação e Operação - Óticas Gestão</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #2563EB;
+      --text-color: #1E293B;
+      --border-color: #E2E8F0;
+      --bg-light: #F8FAFC;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Outfit', 'Helvetica Neue', Arial, sans-serif;
+      color: var(--text-color);
+      line-height: 1.6;
+      padding: 40px;
+      background-color: #FFFFFF;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    /* Print control button */
+    .no-print-bar {
+      background-color: var(--bg-light);
+      border: 1px solid var(--border-color);
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .btn-print {
+      background-color: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+
+    .btn-print:hover {
+      background-color: #1D4ED8;
+    }
+
+    /* Document Styling */
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary);
+      border-bottom: 2px solid var(--primary);
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+    }
+
+    h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-top: 30px;
+      margin-bottom: 16px;
+      color: #0F172A;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 6px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 20px;
+      margin-bottom: 8px;
+      color: #334155;
+    }
+
+    p {
+      margin-bottom: 16px;
+      font-size: 15px;
+      color: #334155;
+      text-align: justify;
+    }
+
+    ul, ol {
+      margin-bottom: 20px;
+      padding-left: 24px;
+    }
+
+    li {
+      margin-bottom: 8px;
+      font-size: 15px;
+      color: #334155;
+    }
+
+    .code-box {
+      background-color: var(--bg-light);
+      border: 1px solid var(--border-color);
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 13px;
+      margin-bottom: 20px;
+      word-break: break-all;
+    }
+
+    /* Diagram wrapper */
+    .diagram-container {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      background-color: var(--bg-light);
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .diagram-box {
+      display: inline-flex;
+      gap: 20px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .diagram-item {
+      background: white;
+      border: 1px solid #CBD5E1;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-weight: 600;
+      font-size: 13px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .diagram-arrow {
+      font-weight: bold;
+      color: var(--primary);
+    }
+
+    /* Print Specific Style Rules */
+    @media print {
+      body {
+        padding: 0;
+      }
+      .no-print {
+        display: none !important;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      h2, h3 {
+        page-break-after: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- No-print action bar -->
+    <div class="no-print-bar no-print">
+      <div>
+        <span style="font-weight: 600; font-size: 15px;">Manual de Implantação e Operação</span>
+        <p style="margin: 0; font-size: 12px; color: #64748B;">Abra no navegador e imprima ou salve como PDF.</p>
+      </div>
+      <button class="btn-print" onclick="window.print()">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" style="vertical-align: middle;">
+          <path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/>
+        </svg>
+        Imprimir / Salvar PDF
+      </button>
+    </div>
+
+    <!-- Cover / Header -->
+    <div style="text-align: center; margin-bottom: 40px;">
+      <h2 style="color: var(--primary); border: none; margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 2px;">Óticas Gestão Integrada</h2>
+      <h1 style="border: none; margin-bottom: 10px; font-size: 32px;">Manual Técnico de Implantação e Atualização</h1>
+      <p style="text-align: center; color: #64748B; font-size: 14px;">Arquitetura em Nuvem PWA + Supabase SQL</p>
+    </div>
+
+    <!-- Section 1 -->
+    <h2>1. Arquitetura do Sistema e Como Funciona</h2>
+    <p>O sistema foi migrado de uma estrutura local baseada apenas no Google Planilhas para uma arquitetura híbrida em nuvem. Isso divide a aplicação em três camadas independentes e integradas:</p>
+    
+    <div class="diagram-container">
+      <div style="font-weight: 600; font-size: 14px; margin-bottom: 10px; color: #0F172A;">Fluxo de Comunicação de Dados</div>
+      <div class="diagram-box">
+        <div class="diagram-item">1. Celular / Computador<br>(PWA na Vercel)</div>
+        <div class="diagram-arrow">➔</div>
+        <div class="diagram-item">2. Servidor API<br>(Apps Script / doPost)</div>
+        <div class="diagram-arrow">➔</div>
+        <div class="diagram-item">3. Banco de Dados<br>(Supabase SQL)</div>
+      </div>
+    </div>
+
+    <ul>
+      <li><strong>Frontend (O Aplicativo)</strong>: Hospedado de forma estática na <strong>Vercel</strong>. Garante carregamento instantâneo, responsividade de tela perfeita e permite que o sistema funcione como um aplicativo instalado (PWA) no celular de qualquer funcionário, sem passar pela App Store ou Google Play.</li>
+      <li><strong>Backend (A API)</strong>: O <strong>Google Apps Script</strong> (do seu painel do Sheets) serve como nosso backend. Ele possui a função <code>doPost(e)</code> que escuta as ações do aplicativo na Vercel e as executa com segurança.</li>
+      <li><strong>Banco de Dados (Supabase PostgreSQL)</strong>: O banco relacional na nuvem. Oferece alta performance, segurança, integridade dos dados e permite conexão direta via <strong>DBeaver</strong> no seu computador.</li>
+    </ul>
+
+    <!-- Section 2 -->
+    <h2>2. Checklist Passo a Passo para Implantação Final</h2>
+    <ol>
+      <li><strong>No DBeaver (Banco de Dados)</strong>:
+        <ul>
+          <li>Conecte ao banco do Supabase.</li>
+          <li>Crie as tabelas vazias copiando e colando o script SQL fornecido na Fase 3 do Guia. Use o atalho <code>Alt + X</code> ou o Play com papel laranja para rodar tudo sem erros.</li>
+        </ul>
+      </li>
+      <li><strong>No Apps Script (Backend)</strong>:
+        <ul>
+          <li>Copie o código completo do arquivo local <code>Code.gs</code>.</li>
+          <li>No Google Sheets, abra <em>Extensões</em> > <em>Apps Script</em>, apague o código antigo e cole o novo por cima. Salve.</li>
+          <li>Clique em <em>Implantar</em> > <em>Nova Implantação</em>. Defina como <strong>Aplicativo Web</strong>, executar como <strong>"Eu"</strong>, e acesso para <strong>"Qualquer um"</strong>.</li>
+          <li>Implante, conceda permissões do Google e <strong>copie a URL do Aplicativo Web</strong> gerada.</li>
+        </ul>
+      </li>
+      <li><strong>No arquivo index.html (Local)</strong>:
+        <ul>
+          <li>Abra o arquivo <code>index.html</code> local e cole a URL do script na linha 8:
+            <div class="code-box">var BACKEND_URL = "SUA_URL_DO_APPS_SCRIPT_AQUI/exec";</div>
+          </li>
+          <li>Salve o arquivo.</li>
+        </ul>
+      </li>
+      <li><strong>No Terminal do Computador (Publicação)</strong>:
+        <ul>
+          <li>Com o terminal aberto na pasta do seu projeto, publique a versão final em produção rodando:
+            <div class="code-box">npx vercel --prod</div>
+          </li>
+        </ul>
+      </li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <!-- Section 3 -->
+    <h2>3. Como Realizar Atualizações Futuras no Sistema</h2>
+    <p>Sempre que você ou um desenvolvedor quiser fazer alterações no sistema no futuro, proceda de acordo com o manual abaixo para manter a segurança do ambiente:</p>
+
+    <h3>Cenário 1: Alterações de Tela ou Visual (Apenas Frontend)</h3>
+    <p><em>Exemplos: Mudar uma cor, alterar um texto ou aviso na tela, arrumar o layout de um botão.</em></p>
+    <ul>
+      <li>Faça a alteração desejada diretamente no arquivo local <code>index.html</code> do seu computador.</li>
+      <li>Abra o terminal do seu computador na pasta do projeto e envie a atualização para a Vercel executando:
+        <div class="code-box">npx vercel --prod</div>
+      </li>
+      <li><strong>Resultado</strong>: O aplicativo é atualizado em tempo real para todos os usuários que usam no celular ou computador, sem necessidade de alterar nada no Google Sheets ou Supabase.</li>
+    </ul>
+
+    <h3>Cenário 2: Alterações de Lógica ou Regras de Negócio (Backend)</h3>
+    <p><em>Exemplos: Alterar regras de login, mudar o cálculo de faturamento de relatórios, criar novos tipos de cadastros.</em></p>
+    <ul>
+      <li>Modifique o arquivo local <code>Code.gs</code> no seu computador.</li>
+      <li>Copie o código completo do <code>Code.gs</code> e substitua o código dentro do Apps Script do Google Sheets. Salve.</li>
+      <li>Para colocar a alteração no ar, vá em <em>Implantar</em> > <em>Gerenciar Implantações</em>, clique no ícone de <strong>Lápis (Editar)</strong>, selecione <strong>Nova Versão</strong> na caixa de seleção e clique em <strong>Implantar</strong>.</li>
+      <li><strong>Resultado</strong>: O seu aplicativo da Vercel passa a usar a nova versão da API instantaneamente, sem precisar mudar a URL no código ou republicar o frontend.</li>
+    </ul>
+
+    <h3>Cenário 3: Alterações no Banco de Dados (SQL)</h3>
+    <p><em>Exemplos: Adicionar um novo campo de texto nos formulários para salvar no banco (ex: "Observações"), criar novas tabelas de apoio.</em></p>
+    <ul>
+      <li>Abra o <strong>DBeaver</strong> e adicione a nova coluna ou tabela de forma visual (ou executando um script SQL).</li>
+      <li>Atualize a lógica de gravação e consulta correspondente no arquivo <code>Code.gs</code> para ler e salvar esse novo campo.</li>
+      <li>Atualize a implantação no Apps Script para gerar uma nova versão da API (conforme o Cenário 2).</li>
+    </ul>
+
+    <hr style="border: none; border-bottom: 1px solid var(--border-color); margin-top: 40px; margin-bottom: 20px;">
+    <div style="text-align: center; font-size: 12px; color: #64748B;">
+      <p style="text-align: center;">Óticas Gestão Integrada © 2026 - Todos os direitos reservados.</p>
+    </div>
+
+  </div>
+</body>
+</html>

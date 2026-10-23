@@ -1,0 +1,15 @@
+.vercel
+.env*
+*.env
+backups/
+*.key
+*.pem
+credentials*.json
+node_modules/
+scratch/
+output.txt
+*.log
+*.xlsx
+*.csv
+*.pdf
+screenshot_*.png
