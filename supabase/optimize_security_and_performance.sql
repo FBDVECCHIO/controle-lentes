@@ -75,15 +75,21 @@ BEGIN
             idx := 0;
             FOR elem IN SELECT * FROM jsonb_array_elements(raw_val::jsonb) LOOP
                 idx := idx + 1;
-                INSERT INTO public.medicos (id, crm, nome, representante, detalhes)
-                VALUES (
-                    COALESCE(NULLIF(elem->>'idMedico', ''), NULLIF(elem->>'id', ''), 'MED-MIG-' || idx || '-' || COALESCE(elem->>'crm', '')),
-                    COALESCE(elem->>'crm', 'SEM-CRM-' || idx),
-                    COALESCE(elem->>'nome', 'Sem Nome'),
-                    COALESCE(elem->>'representante', ''),
-                    elem
-                )
-                ON CONFLICT (id) DO NOTHING;
+                IF NOT EXISTS (SELECT 1 FROM public.medicos WHERE trim(crm) = trim(COALESCE(elem->>'crm', ''))) THEN
+                    INSERT INTO public.medicos (id, crm, nome, representante, detalhes)
+                    VALUES (
+                        CASE
+                            WHEN EXISTS (SELECT 1 FROM public.medicos WHERE id = COALESCE(NULLIF(elem->>'idMedico', ''), NULLIF(elem->>'id', '')))
+                            THEN 'MED-CRM-' || regexp_replace(COALESCE(NULLIF(trim(elem->>'crm'), ''), idx::text), '[^a-zA-Z0-9_-]', '', 'g')
+                            ELSE COALESCE(NULLIF(elem->>'idMedico', ''), NULLIF(elem->>'id', ''), 'MED-MIG-' || idx || '-' || COALESCE(elem->>'crm', ''))
+                        END,
+                        COALESCE(elem->>'crm', 'SEM-CRM-' || idx),
+                        COALESCE(elem->>'nome', 'Sem Nome'),
+                        COALESCE(elem->>'representante', ''),
+                        elem
+                    )
+                    ON CONFLICT (id) DO NOTHING;
+                END IF;
             END LOOP;
         END IF;
 

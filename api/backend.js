@@ -632,7 +632,7 @@ async function getAppData(loggedUser, options) {
       getCachedCatalog('representantes', '/representantes'),
       needFullVendas || isFullAdmin ? getCachedCatalog('contatos_resumo', '/contatos_resumo') : Promise.resolve([]),
       needProdutos ? getCachedCatalog('produtos', '/produtos') : Promise.resolve([]),
-      getCachedCatalog('config_settings', '/config_settings'),
+      getCachedCatalog('config_settings', '/config_settings?key=not.in.(visitas,medicos,clinicas,orcamentos,assistencias,user_pins,fornecedores_depara,auditoria_fechamentos,fornecedores_negociacoes)'),
       needLogs ? supabaseFetch("/auditoria_logs?order=data_hora.desc&limit=100") : Promise.resolve([]),
       needVendas ? supabaseFetch(vendasSelectPath) : Promise.resolve([]),
       needConferencias ? supabaseFetch("/conferencias?order=data.desc&limit=300" + storeFilterEq) : Promise.resolve([]),
@@ -843,18 +843,41 @@ async function getAppData(loggedUser, options) {
       if (c.key === 'assistTemplateClienteConfirmado') assistTemplates.clienteConfirmado = c.value;
     });
 
-    // Fase 3: Preferência pelas tabelas relacionais dedicadas com fallback automático sem perda
-    if (Array.isArray(relMedicos) && relMedicos.length > 0) {
+    // Fase 3: Uso nativo das tabelas relacionais dedicadas (com fallback sob demanda caso tabela ainda não exista)
+    if (Array.isArray(relMedicos)) {
       medicos = relMedicos.map(formatMedicoFromRow);
+    } else {
+      try {
+        var fbMed = await supabaseFetch("/config_settings?key=eq.medicos");
+        if (fbMed && fbMed.length > 0 && fbMed[0].value) medicos = JSON.parse(fbMed[0].value) || [];
+      } catch (e) {}
     }
-    if (Array.isArray(relClinicas) && relClinicas.length > 0) {
+
+    if (Array.isArray(relClinicas)) {
       clinicas = relClinicas.map(formatClinicaFromRow);
+    } else {
+      try {
+        var fbClin = await supabaseFetch("/config_settings?key=eq.clinicas");
+        if (fbClin && fbClin.length > 0 && fbClin[0].value) clinicas = JSON.parse(fbClin[0].value) || [];
+      } catch (e) {}
     }
-    if (Array.isArray(relOrcamentos) && relOrcamentos.length > 0) {
+
+    if (Array.isArray(relOrcamentos)) {
       orcamentos = relOrcamentos.map(formatOrcamentoFromRow);
+    } else if (needOrcamentos) {
+      try {
+        var fbOrc = await supabaseFetch("/config_settings?key=eq.orcamentos");
+        if (fbOrc && fbOrc.length > 0 && fbOrc[0].value) orcamentos = JSON.parse(fbOrc[0].value) || [];
+      } catch (e) {}
     }
-    if (Array.isArray(relAssistencias) && relAssistencias.length > 0) {
+
+    if (Array.isArray(relAssistencias)) {
       assistencias = relAssistencias.map(formatAssistenciaFromRow);
+    } else if (needAssistencias) {
+      try {
+        var fbAss = await supabaseFetch("/config_settings?key=eq.assistencias");
+        if (fbAss && fbAss.length > 0 && fbAss[0].value) assistencias = JSON.parse(fbAss[0].value) || [];
+      } catch (e) {}
     }
 
     if (visitasRaw && visitasRaw.length > 0) {
@@ -2354,8 +2377,9 @@ async function upsertMedico(med, loggedUserUsername) {
     var relCheck = await fetchRelationalTableSafe('medicos', '?crm=eq.' + encodeURIComponent(row.crm) + '&limit=5');
     if (relCheck !== null) {
       var existing = relCheck.find(function(x) { return normalizeCrm(x.crm) === normalizeCrm(row.crm); });
-      if (existing && !med.allowOverwrite && existing.id !== medId) {
+      if (existing && existing.id !== medId) {
         row.id = existing.id;
+        row.detalhes.idMedico = existing.id;
       }
       await Promise.all([
         supabaseFetch('/medicos?on_conflict=id', {

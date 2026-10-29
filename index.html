@@ -18026,7 +18026,7 @@
       if (editIdx !== -1) {
         var originalMed = list[editIdx];
         medObj = {
-          idMedico: originalMed.idMedico || ('MED-' + Math.floor(1000 + Math.random() * 9000)),
+          idMedico: originalMed.idMedico || ('MED-' + Date.now() + '-' + Math.floor(100 + Math.random() * 900)),
           nome: nome,
           crm: crm,
           representante: originalMed.representante || rep
@@ -18034,7 +18034,7 @@
         list[editIdx] = medObj;
         showLoading("Atualizando médico...");
       } else {
-        var idMed = 'MED-' + Math.floor(1000 + Math.random() * 9000);
+        var idMed = 'MED-' + Date.now() + '-' + Math.floor(100 + Math.random() * 900);
         medObj = {
           idMedico: idMed,
           nome: nome,
