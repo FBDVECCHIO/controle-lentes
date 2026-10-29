@@ -5574,6 +5574,8 @@
         hideLoading();
         showLogin();
       } else {
+        var hasCached = (typeof loadAppDataFromCache === 'function') ? loadAppDataFromCache() : false;
+        isSilentLoad = hasCached;
         loadDataFromServer();
       }
     }
@@ -5671,6 +5673,73 @@
     var connectionTimeout = null;
     var isSilentLoad = false;
 
+    // Cache local de alta performance (Stale-While-Revalidate)
+    function saveAppDataCache(data) {
+      try {
+        if (!data || !data.success) return;
+        var cachePayload = {
+          timestamp: Date.now(),
+          data: data
+        };
+        localStorage.setItem('atlas_app_data_cache', JSON.stringify(cachePayload));
+      } catch (e) {
+        console.warn("Falha ao salvar cache local do appData:", e);
+      }
+    }
+
+    function loadAppDataFromCache() {
+      try {
+        var raw = localStorage.getItem('atlas_app_data_cache');
+        if (!raw) return false;
+        var parsed = JSON.parse(raw);
+        // Utilizar dados em cache com TTL de até 12 horas para renderização instantânea
+        if (parsed && parsed.data && (Date.now() - parsed.timestamp < 12 * 60 * 60 * 1000)) {
+          console.log("⚡ [A.T.L.A.S.] Hidratando interface instantaneamente via cache local...");
+          onDataLoaded(parsed.data, true);
+          return true;
+        }
+      } catch (e) {
+        console.warn("Falha ao recuperar cache local do appData:", e);
+      }
+      return false;
+    }
+
+    function updateCurrentAppDataCache() {
+      try {
+        if (!appData) return;
+        saveAppDataCache({
+          success: true,
+          lancamentos: appData.lancamentos || [],
+          lojas: appData.todasLojas || appData.lojas || [],
+          labs: appData.labs || [],
+          produtos: appData.produtos || [],
+          vendedores: appData.vendedores || [],
+          medicos: appData.medicos || [],
+          representantes: appData.representantes || [],
+          contatosResumo: appData.contatosResumo || [],
+          logs: appData.logs || [],
+          vendas: appData.vendas || [],
+          configs: appData.configs || {},
+          assistencias: appData.assistencias || [],
+          tecnicos: appData.tecnicos || [],
+          assistTemplates: appData.assistTemplates || {},
+          captadores: appData.captadores || [],
+          motivosPerda: appData.motivosPerda || [],
+          formasPagamento: appData.formasPagamento || [],
+          orcamentos: appData.orcamentos || [],
+          visitas: appData.visitas || [],
+          assuntosVisita: appData.assuntosVisita || [],
+          clinicas: appData.clinicas || [],
+          campanhas: appData.campanhas || [],
+          leads: appData.leads || [],
+          ocorrencias: appData.ocorrencias || [],
+          motivosOcorrencia: appData.motivosOcorrencia || []
+        });
+      } catch (e) {
+        console.warn("Falha ao sincronizar cache local pós-mutação:", e);
+      }
+    }
+
     // Carregar dados assíncronos do backend
     function loadDataFromServer() {
       if (!isSilentLoad) {
@@ -5700,7 +5769,7 @@
         .withSuccessHandler(function(res) {
           if (connectionTimeout) clearTimeout(connectionTimeout);
           if (!checkSession(res)) return;
-          onDataLoaded(res);
+          onDataLoaded(res, false);
         })
         .withFailureHandler(function(err) {
           if (connectionTimeout) clearTimeout(connectionTimeout);
@@ -5709,8 +5778,11 @@
         .getAppData(userStr);
     }
 
-    function onDataLoaded(response) {
-      isSilentLoad = false;
+    function onDataLoaded(response, isFromCache) {
+      if (!isFromCache) {
+        isSilentLoad = false;
+        saveAppDataCache(response);
+      }
       if (response.success) {
         appData.lancamentos = response.lancamentos || [];
         appData.lojas = response.lojas || [];
@@ -6072,6 +6144,8 @@
         }
       }
 
+      var hasCached = (typeof loadAppDataFromCache === 'function') ? loadAppDataFromCache() : false;
+      isSilentLoad = hasCached;
       hideLogin();
       loadDataFromServer();
       resetInactivityTimer();
@@ -6091,6 +6165,9 @@
 
     function logout() {
       loggedUser = null;
+      try {
+        localStorage.removeItem('atlas_app_data_cache');
+      } catch (e) {}
       clearTimeout(inactivityTimer);
       stopSessionCheck();
       document.getElementById("loginUser").value = "";
@@ -7399,6 +7476,7 @@
             if (typeof renderVendaOSList === 'function') renderVendaOSList();
             if (userActiveTab === 'venda-dashboard') renderVendasTab();
             if (userActiveTab === 'medicos') renderMedicosTab();
+            updateCurrentAppDataCache();
             alert("Venda gravada com sucesso!");
           } else {
             hideLoading();
@@ -7725,6 +7803,7 @@
             hideLoading();
             renderConferencias();
             if (userActiveTab === 'resumoVendas') renderResumoLab();
+            updateCurrentAppDataCache();
             alert("Lançamento salvo com sucesso!");
           } else {
             hideLoading();
@@ -17941,6 +18020,7 @@
 
             closeVisitaModal();
             renderVisitasTable();
+            updateCurrentAppDataCache();
             alert("Visita médica registrada e gravada com sucesso!");
           } else {
             alert("Erro ao registrar no servidor: " + (res ? res.error : "Resposta inválida"));
@@ -19037,16 +19117,15 @@
         return;
       }
 
-      showLoading("Atualizando status do lead...");
+      // Atualização otimista instantânea na interface (0ms de latência percebida)
+      var previousStatus = lead.status;
+      lead.status = newStatus;
+      lead.atualizado_em = new Date().toISOString();
+      renderLeadKanban();
+      if (userActiveTab === 'controleLead') renderLeadsList();
+      updateCurrentAppDataCache();
+
       if (typeof google === 'undefined' || !google.script) {
-        setTimeout(function() {
-          hideLoading();
-          lead.status = newStatus;
-          lead.atualizado_em = new Date().toISOString();
-          renderLeadKanban();
-          if (userActiveTab === 'controleLead') renderLeadsList();
-          alert("Status do lead atualizado com sucesso (Mock)!");
-        }, 500);
         return;
       }
 
@@ -19054,15 +19133,22 @@
         .withSuccessHandler(function(res) {
           if (!checkSession(res)) return;
           if (res.success) {
-            hideLoading();
+            // Sincronização silenciosa em segundo plano sem travar a interface
+            isSilentLoad = true;
             loadDataFromServer();
           } else {
-            hideLoading();
+            // Reverter em caso de falha do servidor
+            lead.status = previousStatus;
+            renderLeadKanban();
+            if (userActiveTab === 'controleLead') renderLeadsList();
+            updateCurrentAppDataCache();
             alert("Erro ao atualizar lead: " + res.error);
           }
         })
         .withFailureHandler(function(err) {
-          hideLoading();
+          lead.status = previousStatus;
+          renderLeadKanban();
+          if (userActiveTab === 'controleLead') renderLeadsList();
           alert("Erro no servidor: " + err.toString());
         })
         .updateLeadStatus(leadId, newStatus, {}, loggedUser.username);

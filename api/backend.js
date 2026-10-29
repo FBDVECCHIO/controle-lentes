@@ -36,7 +36,14 @@ function verifyToken(token) {
   }
 }
 
-const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uZ3dmZWFyd2prcGlzYXJhcmJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTc5MzksImV4cCI6MjA5NjE3MzkzOX0.vk9Ol41NU2RI72-ZZKIcm7hzccYBjzPPptb6rZv_mKs";
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 
+                     process.env.SUPABASE_SERVICE_KEY || 
+                     process.env.SUPABASE_KEY || 
+                     process.env.SUPABASE_ANON_KEY || 
+                     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1uZ3dmZWFyd2prcGlzYXJhcmJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1OTc5MzksImV4cCI6MjA5NjE3MzkzOX0.vk9Ol41NU2RI72-ZZKIcm7hzccYBjzPPptb6rZv_mKs";
+
+// Objeto de compatibilidade Logger para evitar ReferenceError em ambiente Node.js / Vercel
+const Logger = typeof console !== 'undefined' ? console : { log: function() {}, warn: function() {}, error: function() {} };
 
 /**
  * Formata data no fuso de São Paulo (substitui Utilities.formatDate)
@@ -147,13 +154,14 @@ async function logAction(username, action) {
   try {
     await supabaseFetch("/auditoria_logs", {
       method: "POST",
+      headers: { 'Prefer': 'return=minimal' },
       payload: JSON.stringify({
         usuario: username || 'sistema',
         acao: action
       })
     });
   } catch (e) {
-    Logger.log("Erro ao salvar log: " + e.toString());
+    console.warn("Aviso ao salvar log de auditoria: " + e.toString());
   }
 }
 
@@ -249,15 +257,45 @@ function getUserUsername(loggedUser) {
   return "";
 }
 
+// Cache em memória de alta performance para usuários/permissões (TTL: 60s)
+const userSessionCache = new Map();
+const USER_CACHE_TTL_MS = 60 * 1000;
+
+function invalidateUserCache(username) {
+  if (!username) {
+    userSessionCache.clear();
+    return;
+  }
+  var norm = String(username).trim().toLowerCase();
+  userSessionCache.delete(norm);
+}
+
+async function getCachedUser(username) {
+  if (!username) return null;
+  var norm = String(username).trim().toLowerCase();
+  var cached = userSessionCache.get(norm);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.user;
+  }
+  var users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(norm));
+  if (!users || users.length === 0) {
+    return null;
+  }
+  var user = users[0];
+  userSessionCache.set(norm, {
+    user: user,
+    expiresAt: Date.now() + USER_CACHE_TTL_MS
+  });
+  return user;
+}
+
 async function validateUserSession(loggedUser, requiredPermission) {
   try {
     var username = getUserUsername(loggedUser);
     if (!username) return false;
     
-    var users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(username));
-    if (users.length === 0) return false;
-    
-    var user = users[0];
+    var user = await getCachedUser(username);
+    if (!user) return false;
     if (user.status !== 'ATIVO') return false;
     
     if (requiredPermission) {
@@ -278,6 +316,34 @@ async function validateUserSession(loggedUser, requiredPermission) {
   } catch (e) {
     return false;
   }
+}
+
+async function validateUserAnyPermission(loggedUser, permissionsList) {
+  if (!permissionsList || permissionsList.length === 0) {
+    return await validateUserSession(loggedUser);
+  }
+  var username = getUserUsername(loggedUser);
+  if (!username) return false;
+  
+  var user = await getCachedUser(username);
+  if (!user || user.status !== 'ATIVO') return false;
+  
+  // Avaliação em memória de todas as permissões em 0ms
+  for (var i = 0; i < permissionsList.length; i++) {
+    var perm = permissionsList[i];
+    var col = perm;
+    if (perm === 'logVendas') col = 'log_vendas';
+    if (perm === 'resumoVendas') col = 'resumo_vendas';
+    
+    var newPerms = ['medicos', 'orcamentos', 'garantias', 'devolucoes', 'assistencia', 'visitaMedica', 'vendaOSList', 'leadKanban', 'leadControle', 'ocorrencias'];
+    if (newPerms.indexOf(perm) !== -1) {
+      var extra = parseExtraPermissions(user.medicos, user);
+      if (extra[perm] === 'ATIVO') return true;
+    } else if (user[col] === 'ATIVO') {
+      return true;
+    }
+  }
+  return false;
 }
 
 // ==========================================
@@ -305,29 +371,33 @@ async function getAppData(loggedUser) {
       "/vendas?order=data.desc&limit=300",
       "/conferencias?order=data.desc&limit=300",
       "/config_settings",
-      "/ocorrencias?order=data.desc"
+      "/ocorrencias?order=data.desc",
+      "/campanhas?order=id.asc",
+      "/leads?order=id.desc"
     ];
     
-    var results = await supabaseFetchAll(paths);
+    // Dispara todas as consultas em paralelo para tempo mínimo de carregamento
+    const [results, visitasRaw] = await Promise.all([
+      supabaseFetchAll(paths),
+      supabaseFetchPaginated("/visitas_medicas?order=data.desc,hora.desc").catch(function(errVisitas) {
+        console.warn("Aviso ao consultar public.visitas_medicas, usando fallback:", errVisitas);
+        return [];
+      })
+    ]);
     
-    var lojasRaw = results[0];
-    var labsRaw = results[1];
-    var vendedoresRaw = results[2];
-    var representantesRaw = results[3];
-    var contatosRaw = results[4];
-    var produtosRaw = results[5];
-    var logsRaw = results[6];
-    var vendasRaw = results[7];
-    var confsRaw = results[8];
-    var configsList = results[9];
-    var ocorrenciasRaw = results[10];
-
-    var visitasRaw = [];
-    try {
-      visitasRaw = await supabaseFetchPaginated("/visitas_medicas?order=data.desc,hora.desc");
-    } catch (errVisitas) {
-      console.warn("Aviso ao consultar public.visitas_medicas, usando fallback:", errVisitas);
-    }
+    var lojasRaw = results[0] || [];
+    var labsRaw = results[1] || [];
+    var vendedoresRaw = results[2] || [];
+    var representantesRaw = results[3] || [];
+    var contatosRaw = results[4] || [];
+    var produtosRaw = results[5] || [];
+    var logsRaw = results[6] || [];
+    var vendasRaw = results[7] || [];
+    var confsRaw = results[8] || [];
+    var configsList = results[9] || [];
+    var ocorrenciasRaw = results[10] || [];
+    var campsRaw = results[11] || [];
+    var leadsRaw = results[12] || [];
 
     // 1. Obter tabelas simples
     var lojas = lojasRaw.map(function(x) { return x.nome; });
@@ -540,31 +610,22 @@ async function getAppData(loggedUser) {
       });
     }
 
-    var campanhas = [];
-    try {
-      var campsRaw = await supabaseFetch("/campanhas?order=id.asc");
-      campanhas = campsRaw.map(function(c) {
-        return {
-          id: c.id,
-          nome: c.nome,
-          status: c.status || 'ATIVO',
-          data_inicio: c.data_inicio ? (c.data_inicio.indexOf('-') !== -1 ? c.data_inicio : ymdToDmy(c.data_inicio)) : '',
-          data_fim: c.data_fim ? (c.data_fim.indexOf('-') !== -1 ? c.data_fim : ymdToDmy(c.data_fim)) : '',
-          lojas: c.lojas || 'Todas',
-          loja: c.lojas || 'Todas',
-          aro: c.aro || '',
-          lente: c.lente || '',
-          preco_alvo: Number(c.preco_alvo) || 0
-        };
-      });
-    } catch(e) {
-      Logger.log("Erro ao buscar campanhas: " + e.toString());
-    }
+    var campanhas = (campsRaw || []).map(function(c) {
+      return {
+        id: c.id,
+        nome: c.nome,
+        status: c.status || 'ATIVO',
+        data_inicio: c.data_inicio ? (c.data_inicio.indexOf('-') !== -1 ? c.data_inicio : ymdToDmy(c.data_inicio)) : '',
+        data_fim: c.data_fim ? (c.data_fim.indexOf('-') !== -1 ? c.data_fim : ymdToDmy(c.data_fim)) : '',
+        lojas: c.lojas || 'Todas',
+        loja: c.lojas || 'Todas',
+        aro: c.aro || '',
+        lente: c.lente || '',
+        preco_alvo: Number(c.preco_alvo) || 0
+      };
+    });
 
-    var leads = [];
-    try {
-      var leadsRaw = await supabaseFetch("/leads?order=id.desc");
-      leads = leadsRaw.map(function(l) {
+    var leads = (leadsRaw || []).map(function(l) {
         var data_visita = "";
         var hora_visita = "";
         if (l.dia_horario) {
@@ -614,9 +675,6 @@ async function getAppData(loggedUser) {
           atualizado_em: l.atualizado_em || l.created_at || ''
         };
       });
-    } catch(e) {
-      Logger.log("Erro ao buscar leads: " + e.toString());
-    }
 
     return {
       success: true,
@@ -684,19 +742,23 @@ async function addVenda(saleData, loggedUserUsername) {
     var exists = await supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os));
     
     if (exists.length > 0) {
-      // Atualizar venda
-      await supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os), {
-        method: "PATCH",
-        payload: JSON.stringify(metadata)
-      });
-      await logAction(loggedUserUsername, "Atualizou venda OS: " + os);
+      // Atualizar venda em paralelo com log de auditoria
+      await Promise.all([
+        supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os), {
+          method: "PATCH",
+          payload: JSON.stringify(metadata)
+        }),
+        logAction(loggedUserUsername, "Atualizou venda OS: " + os)
+      ]);
     } else {
-      // Criar nova venda
-      await supabaseFetch("/vendas", {
-        method: "POST",
-        payload: JSON.stringify(metadata)
-      });
-      await logAction(loggedUserUsername, "Cadastrou nova venda OS: " + os);
+      // Criar nova venda em paralelo com log de auditoria
+      await Promise.all([
+        supabaseFetch("/vendas", {
+          method: "POST",
+          payload: JSON.stringify(metadata)
+        }),
+        logAction(loggedUserUsername, "Cadastrou nova venda OS: " + os)
+      ]);
     }
     
     return { success: true };
@@ -747,22 +809,26 @@ async function deleteVendas(osList, loggedUserUsername) {
     var username = getUserUsername(loggedUserUsername);
     if (!username) return { success: false, error: "Acesso não autorizado." };
     
-    var users = await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(username));
-    var userLoja = (users && users.length > 0) ? (users[0].loja || 'Todos') : 'Todos';
+    var user = await getCachedUser(username);
+    var userLoja = user ? (user.loja || 'Todos') : 'Todos';
 
-    for (var i = 0; i < osList.length; i++) {
-      var os = osList[i];
-      if (userLoja !== 'Todos') {
+    if (userLoja !== 'Todos') {
+      for (var i = 0; i < osList.length; i++) {
+        var os = osList[i];
         var existing = await supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os));
         if (existing && existing.length > 0 && existing[0].loja !== userLoja) {
           return { success: false, error: "Permissão negada: não é permitido excluir vendas de outra filial." };
         }
       }
-      await supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os), {
+    }
+
+    await Promise.all(osList.map(function(os) {
+      return supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os), {
         method: "DELETE"
       });
-      await logAction(loggedUserUsername, "Excluiu venda OS: " + os);
-    }
+    }));
+
+    await logAction(loggedUserUsername, "Excluiu vendas OS: " + osList.join(', '));
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -805,17 +871,21 @@ async function addConferencia(confData, loggedUserUsername) {
     var exists = await supabaseFetch("/conferencias?os=eq." + encodeURIComponent(os));
     
     if (exists.length > 0) {
-      await supabaseFetch("/conferencias?os=eq." + encodeURIComponent(os), {
-        method: "PATCH",
-        payload: JSON.stringify(metadata)
-      });
-      await logAction(loggedUserUsername, "Atualizou conferência OS: " + os);
+      await Promise.all([
+        supabaseFetch("/conferencias?os=eq." + encodeURIComponent(os), {
+          method: "PATCH",
+          payload: JSON.stringify(metadata)
+        }),
+        logAction(loggedUserUsername, "Atualizou conferência OS: " + os)
+      ]);
     } else {
-      await supabaseFetch("/conferencias", {
-        method: "POST",
-        payload: JSON.stringify(metadata)
-      });
-      await logAction(loggedUserUsername, "Lançou conferência OS: " + os);
+      await Promise.all([
+        supabaseFetch("/conferencias", {
+          method: "POST",
+          payload: JSON.stringify(metadata)
+        }),
+        logAction(loggedUserUsername, "Lançou conferência OS: " + os)
+      ]);
     }
     return { success: true };
   } catch (e) {
@@ -829,10 +899,12 @@ async function deleteConferencia(os, dataStr, loggedUserUsername) {
     if (dataStr) {
       query += "&data=eq." + encodeURIComponent(dmyToYmd(dataStr));
     }
-    await supabaseFetch(query, {
-      method: "DELETE"
-    });
-    await logAction(loggedUserUsername, "Excluiu conferência OS: " + os);
+    await Promise.all([
+      supabaseFetch(query, {
+        method: "DELETE"
+      }),
+      logAction(loggedUserUsername, "Excluiu conferência OS: " + os)
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -842,19 +914,18 @@ async function deleteConferencia(os, dataStr, loggedUserUsername) {
 async function deleteConferenciaGroup(items, loggedUserUsername) {
   try {
     if (!items || items.length === 0) return { success: true };
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
+    await Promise.all(items.map(function(item) {
       var os = item.os || item.osLoja;
       var dataStr = item.dataStr || item.data;
       var query = "/conferencias?os=eq." + encodeURIComponent(os);
       if (dataStr) {
         query += "&data=eq." + encodeURIComponent(dmyToYmd(dataStr));
       }
-      await supabaseFetch(query, {
+      return supabaseFetch(query, {
         method: "DELETE"
       });
-      await logAction(loggedUserUsername, "Excluiu conferência grupo OS: " + os);
-    }
+    }));
+    await logAction(loggedUserUsername, "Excluiu grupo de conferências (" + items.length + " itens)");
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1521,6 +1592,7 @@ async function saveUser(userData, loggedUserUsername) {
       await logAction(loggedUserUsername, "Cadastrou novo usuário: " + userData.username);
     }
     
+    invalidateUserCache(userData.username);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1569,12 +1641,15 @@ async function changeOwnPassword(newPassword, loggedUserUsername, currentPasswor
       medicos: arr.join(',')
     };
     
-    await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(username), {
-      method: "PATCH",
-      payload: JSON.stringify(payload)
-    });
+    await Promise.all([
+      supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(username), {
+        method: "PATCH",
+        payload: JSON.stringify(payload)
+      }),
+      logAction(username, "Alterou a própria senha (limpou exigência de primeiro login)")
+    ]);
     
-    await logAction(username, "Alterou a própria senha (limpou exigência de primeiro login)");
+    invalidateUserCache(username);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1590,10 +1665,13 @@ async function deleteUser(username, loggedUserUsername) {
     if (username === 'admin') {
       throw new Error("O usuário administrador padrão 'admin' não pode ser excluído.");
     }
-    await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(username), {
-      method: "DELETE"
-    });
-    await logAction(loggedUserUsername, "Excluiu usuário: " + username);
+    await Promise.all([
+      supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(username), {
+        method: "DELETE"
+      }),
+      logAction(loggedUserUsername, "Excluiu usuário: " + username)
+    ]);
+    invalidateUserCache(username);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1981,12 +2059,8 @@ async function addVisitaMedica(visitaData, loggedUserUsername) {
   if (typeof loggedUserUsername === 'object' && loggedUserUsername) {
     loggedUserUsername = loggedUserUsername.username;
   }
-  var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-  var isConf = await validateUserSession(loggedUserUsername, 'conferencia');
-  var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-  var isVisita = await validateUserSession(loggedUserUsername, 'visitaMedica');
-  var isAssistencia = await validateUserSession(loggedUserUsername, 'assistencia');
-  if (!isVenda && !isConf && !isConfig && !isVisita && !isAssistencia) {
+  var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia']);
+  if (!hasPerm) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
 
@@ -2010,12 +2084,13 @@ async function addVisitaMedica(visitaData, loggedUserUsername) {
       lng: (visitaData.lng !== null && visitaData.lng !== undefined && !isNaN(visitaData.lng)) ? Number(visitaData.lng) : null
     };
 
-    await supabaseFetch("/visitas_medicas", {
-      method: "POST",
-      payload: JSON.stringify(row)
-    });
-
-    await logAction(loggedUserUsername, "Registrou visita médica: " + row.medico_nome + " (" + row.representante + ")");
+    await Promise.all([
+      supabaseFetch("/visitas_medicas", {
+        method: "POST",
+        payload: JSON.stringify(row)
+      }),
+      logAction(loggedUserUsername, "Registrou visita médica: " + row.medico_nome + " (" + row.representante + ")")
+    ]);
 
     var isClin = row.medico_crm === 'CLINICA' || 
       (row.medico_nome && (row.medico_nome.toLowerCase().includes('clínica') || row.medico_nome.toLowerCase().includes('clinica')));
@@ -2048,12 +2123,8 @@ async function deleteVisitaMedica(visitaId, loggedUserUsername) {
   if (typeof loggedUserUsername === 'object' && loggedUserUsername) {
     loggedUserUsername = loggedUserUsername.username;
   }
-  var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-  var isConf = await validateUserSession(loggedUserUsername, 'conferencia');
-  var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-  var isVisita = await validateUserSession(loggedUserUsername, 'visitaMedica');
-  var isAssistencia = await validateUserSession(loggedUserUsername, 'assistencia');
-  if (!isVenda && !isConf && !isConfig && !isVisita && !isAssistencia) {
+  var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia']);
+  if (!hasPerm) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
 
@@ -2062,11 +2133,12 @@ async function deleteVisitaMedica(visitaId, loggedUserUsername) {
   }
 
   try {
-    await supabaseFetch("/visitas_medicas?id=eq." + encodeURIComponent(visitaId), {
-      method: "DELETE"
-    });
-
-    await logAction(loggedUserUsername, "Removeu registro de visita médica ID: " + visitaId);
+    await Promise.all([
+      supabaseFetch("/visitas_medicas?id=eq." + encodeURIComponent(visitaId), {
+        method: "DELETE"
+      }),
+      logAction(loggedUserUsername, "Removeu registro de visita médica ID: " + visitaId)
+    ]);
     return { success: true, deletedId: visitaId };
   } catch (err) {
     console.error("Erro ao excluir visita médica:", err);
@@ -2079,18 +2151,13 @@ async function addConfigRecord(key, record, loggedUserUsername) {
     return await addVisitaMedica(record, loggedUserUsername);
   }
   if (key === 'assistencias') {
-    var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-    var isConf = await validateUserSession(loggedUserUsername, 'conferencia');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    var isVisita = await validateUserSession(loggedUserUsername, 'visitaMedica');
-    var isAssistencia = await validateUserSession(loggedUserUsername, 'assistencia');
-    if (!isVenda && !isConf && !isConfig && !isVisita && !isAssistencia) {
+    var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia']);
+    if (!hasPerm) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
   } else if (key === 'orcamentos') {
-    var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    if (!isVenda && !isConfig) {
+    var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['venda', 'configuracoes']);
+    if (!hasPerm) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
   } else {
@@ -2111,18 +2178,23 @@ async function addConfigRecord(key, record, loggedUserUsername) {
     var val = JSON.stringify(currentArray);
 
     if (exists.length > 0) {
-      await supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey), {
-        method: "PATCH",
-        payload: JSON.stringify({ value: val })
-      });
+      await Promise.all([
+        supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey), {
+          method: "PATCH",
+          payload: JSON.stringify({ value: val })
+        }),
+        logAction(loggedUserUsername, "Adicionou registro no parâmetro " + queryKey)
+      ]);
     } else {
-      await supabaseFetch("/config_settings", {
-        method: "POST",
-        payload: JSON.stringify({ key: queryKey, value: val })
-      });
+      await Promise.all([
+        supabaseFetch("/config_settings", {
+          method: "POST",
+          payload: JSON.stringify({ key: queryKey, value: val })
+        }),
+        logAction(loggedUserUsername, "Adicionou registro no parâmetro " + queryKey)
+      ]);
     }
 
-    await logAction(loggedUserUsername, "Adicionou registro no parâmetro " + queryKey);
     return { success: true, data: currentArray };
   } catch (err) {
     return { success: false, error: err.toString() };
@@ -2134,18 +2206,13 @@ async function deleteConfigRecord(key, recordId, loggedUserUsername) {
     return await deleteVisitaMedica(recordId, loggedUserUsername);
   }
   if (key === 'assistencias') {
-    var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-    var isConf = await validateUserSession(loggedUserUsername, 'conferencia');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    var isVisita = await validateUserSession(loggedUserUsername, 'visitaMedica');
-    var isAssistencia = await validateUserSession(loggedUserUsername, 'assistencia');
-    if (!isVenda && !isConf && !isConfig && !isVisita && !isAssistencia) {
+    var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia']);
+    if (!hasPerm) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
   } else if (key === 'orcamentos') {
-    var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    if (!isVenda && !isConfig) {
+    var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['venda', 'configuracoes']);
+    if (!hasPerm) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
   } else {
@@ -2637,7 +2704,7 @@ async function deleteCampaign(campId, loggedUserUsername) {
 }
 
 async function saveLead(lead, loggedUserUsername) {
-  if (!await validateUserSession(loggedUserUsername, 'leadControle') && !await validateUserSession(loggedUserUsername, 'leadKanban')) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['leadControle', 'leadKanban'])) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
@@ -2662,17 +2729,21 @@ async function saveLead(lead, loggedUserUsername) {
     };
 
     if (lead.id) {
-      await supabaseFetch("/leads?id=eq." + lead.id, {
-        method: "PATCH",
-        payload: JSON.stringify(payload)
-      });
-      await logAction(loggedUserUsername, "Atualizou lead ID " + lead.id + ": " + lead.nome);
+      await Promise.all([
+        supabaseFetch("/leads?id=eq." + lead.id, {
+          method: "PATCH",
+          payload: JSON.stringify(payload)
+        }),
+        logAction(loggedUserUsername, "Atualizou lead ID " + lead.id + ": " + lead.nome)
+      ]);
     } else {
-      await supabaseFetch("/leads", {
-        method: "POST",
-        payload: JSON.stringify(payload)
-      });
-      await logAction(loggedUserUsername, "Cadastrou novo lead: " + lead.nome);
+      await Promise.all([
+        supabaseFetch("/leads", {
+          method: "POST",
+          payload: JSON.stringify(payload)
+        }),
+        logAction(loggedUserUsername, "Cadastrou novo lead: " + lead.nome)
+      ]);
     }
     return { success: true };
   } catch (e) {
@@ -2685,10 +2756,12 @@ async function deleteLead(leadId, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/leads?id=eq." + leadId, {
-      method: "DELETE"
-    });
-    await logAction(loggedUserUsername, "Excluiu lead ID: " + leadId);
+    await Promise.all([
+      supabaseFetch("/leads?id=eq." + leadId, {
+        method: "DELETE"
+      }),
+      logAction(loggedUserUsername, "Excluiu lead ID: " + leadId)
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -2696,7 +2769,7 @@ async function deleteLead(leadId, loggedUserUsername) {
 }
 
 async function updateLeadStatus(leadId, status, conversionData, loggedUserUsername) {
-  if (!await validateUserSession(loggedUserUsername, 'leadKanban') && !await validateUserSession(loggedUserUsername, 'leadControle') && !await validateUserSession(loggedUserUsername, 'venda')) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['leadKanban', 'leadControle', 'venda'])) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
@@ -2716,12 +2789,13 @@ async function updateLeadStatus(leadId, status, conversionData, loggedUserUserna
       }
     }
 
-    await supabaseFetch("/leads?id=eq." + leadId, {
-      method: "PATCH",
-      payload: JSON.stringify(payload)
-    });
-    
-    await logAction(loggedUserUsername, "Alterou status do lead ID " + leadId + " para: " + status);
+    await Promise.all([
+      supabaseFetch("/leads?id=eq." + leadId, {
+        method: "PATCH",
+        payload: JSON.stringify(payload)
+      }),
+      logAction(loggedUserUsername, "Alterou status do lead ID " + leadId + " para: " + status)
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -2730,9 +2804,8 @@ async function updateLeadStatus(leadId, status, conversionData, loggedUserUserna
 
 async function saveOcorrencia(record, loggedUserUsername) {
   try {
-    var isOco = await validateUserSession(loggedUserUsername, 'ocorrencias');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    if (!isOco && !isConfig) {
+    var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['ocorrencias', 'configuracoes']);
+    if (!hasPerm) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
 
@@ -2751,18 +2824,22 @@ async function saveOcorrencia(record, loggedUserUsername) {
     
     if (id) {
       // Editar ocorrência existente
-      await supabaseFetch("/ocorrencias?id=eq." + id, {
-        method: "PATCH",
-        payload: JSON.stringify(payload)
-      });
-      await logAction(loggedUserUsername, "Atualizou ocorrência ID: " + id + " (OS: " + record.os + ")");
+      await Promise.all([
+        supabaseFetch("/ocorrencias?id=eq." + id, {
+          method: "PATCH",
+          payload: JSON.stringify(payload)
+        }),
+        logAction(loggedUserUsername, "Atualizou ocorrência ID: " + id + " (OS: " + record.os + ")")
+      ]);
     } else {
       // Criar nova ocorrência
-      await supabaseFetch("/ocorrencias", {
-        method: "POST",
-        payload: JSON.stringify(payload)
-      });
-      await logAction(loggedUserUsername, "Cadastrou nova ocorrência OS: " + record.os);
+      await Promise.all([
+        supabaseFetch("/ocorrencias", {
+          method: "POST",
+          payload: JSON.stringify(payload)
+        }),
+        logAction(loggedUserUsername, "Cadastrou nova ocorrência OS: " + record.os)
+      ]);
     }
     
     return { success: true };
@@ -2773,16 +2850,17 @@ async function saveOcorrencia(record, loggedUserUsername) {
 
 async function deleteOcorrencia(id, loggedUserUsername) {
   try {
-    var isOco = await validateUserSession(loggedUserUsername, 'ocorrencias');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    if (!isOco && !isConfig) {
+    var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['ocorrencias', 'configuracoes']);
+    if (!hasPerm) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
 
-    await supabaseFetch("/ocorrencias?id=eq." + id, {
-      method: "DELETE"
-    });
-    await logAction(loggedUserUsername, "Excluiu ocorrência ID: " + id);
+    await Promise.all([
+      supabaseFetch("/ocorrencias?id=eq." + id, {
+        method: "DELETE"
+      }),
+      logAction(loggedUserUsername, "Excluiu ocorrência ID: " + id)
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -2791,9 +2869,8 @@ async function deleteOcorrencia(id, loggedUserUsername) {
 
 async function deleteOcorrenciasBulk(ids, loggedUserUsername) {
   try {
-    var isOco = await validateUserSession(loggedUserUsername, 'ocorrencias');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    if (!isOco && !isConfig) {
+    var hasPerm = await validateUserAnyPermission(loggedUserUsername, ['ocorrencias', 'configuracoes']);
+    if (!hasPerm) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
     
@@ -2802,11 +2879,12 @@ async function deleteOcorrenciasBulk(ids, loggedUserUsername) {
     }
     
     var idsStr = ids.join(",");
-    await supabaseFetch("/ocorrencias?id=in.(" + idsStr + ")", {
-      method: "DELETE"
-    });
-    
-    await logAction(loggedUserUsername, "Excluiu ocorrências em lote IDs: " + idsStr);
+    await Promise.all([
+      supabaseFetch("/ocorrencias?id=in.(" + idsStr + ")", {
+        method: "DELETE"
+      }),
+      logAction(loggedUserUsername, "Excluiu ocorrências em lote IDs: " + idsStr)
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -3520,3 +3598,6 @@ module.exports = async function handler(req, res) {
 // Export individual functions for test suites
 module.exports.backendFunctions = backendFunctions;
 module.exports.supabaseFetch = supabaseFetch;
+module.exports.userSessionCache = userSessionCache;
+module.exports.invalidateUserCache = invalidateUserCache;
+module.exports.validateUserAnyPermission = validateUserAnyPermission;
