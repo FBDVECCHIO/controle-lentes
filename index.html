@@ -51,11 +51,161 @@
         }
       };
 
+      var OFFLINE_QUEUE_KEY = 'atlas_offline_mutation_queue_v1';
+      var OFFLINE_QUEUEABLE_OPS = {
+        addVisitaMedica: true,
+        addVenda: true,
+        saveVenda: true,
+        addConferencia: true,
+        saveLancamento: true,
+        upsertOrcamento: true,
+        upsertAssistencia: true,
+        updateAssistenciaStatus: true,
+        saveLead: true,
+        updateLeadStatus: true,
+        saveOcorrencia: true
+      };
+      var isFlushingOfflineQueue = false;
+
+      function getOfflineQueue() {
+        try {
+          var raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+          return raw ? (JSON.parse(raw) || []) : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveOfflineQueue(queue) {
+        try {
+          if (!queue || queue.length === 0) {
+            localStorage.removeItem(OFFLINE_QUEUE_KEY);
+          } else {
+            localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+          }
+          renderOfflineQueueBadge(queue ? queue.length : 0);
+        } catch (e) {}
+      }
+
+      function renderOfflineQueueBadge(count, customMsg) {
+        try {
+          if (typeof document === 'undefined' || !document.body) return;
+          var badge = document.getElementById('atlasOfflineQueueBadge');
+          if (!count && !customMsg) {
+            if (badge) badge.style.display = 'none';
+            return;
+          }
+          if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'atlasOfflineQueueBadge';
+            badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:99999;padding:10px 16px;border-radius:999px;font-family:sans-serif;font-size:12px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,0.35);display:flex;align-items:center;gap:8px;transition:all 0.25s ease;';
+            document.body.appendChild(badge);
+          }
+          if (customMsg) {
+            badge.style.background = '#10b981';
+            badge.style.color = '#ffffff';
+            badge.textContent = customMsg;
+            badge.style.display = 'flex';
+            setTimeout(function() {
+              if (getOfflineQueue().length === 0 && badge) badge.style.display = 'none';
+            }, 3500);
+          } else {
+            badge.style.background = '#f59e0b';
+            badge.style.color = '#111827';
+            badge.textContent = 'Modo Offline: ' + count + ' lançamento(s) salvo(s) no aparelho — aguardando sinal';
+            badge.style.display = 'flex';
+          }
+        } catch (e) {}
+      }
+
+      function enqueueOfflineMutation(prop, args) {
+        var q = getOfflineQueue();
+        q.push({
+          id: 'OQ-' + Date.now() + '-' + Math.floor(Math.random() * 10000),
+          functionName: prop,
+          arguments: args,
+          createdAt: new Date().toISOString()
+        });
+        saveOfflineQueue(q);
+      }
+
+      function flushOfflineMutationQueue() {
+        if (isFlushingOfflineQueue) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        var queue = getOfflineQueue();
+        if (!queue || queue.length === 0) return;
+
+        var token = null;
+        try {
+          token = sessionStorage.getItem('authToken') || localStorage.getItem('authToken');
+        } catch (e) {}
+
+        isFlushingOfflineQueue = true;
+        var headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+
+        var nextItem = queue[0];
+        fetch(BACKEND_URL, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({
+            functionName: nextItem.functionName,
+            arguments: nextItem.arguments,
+            token: token
+          })
+        })
+        .then(function(res) {
+          if (!res.ok && res.status >= 500) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(function() {
+          var remaining = getOfflineQueue().filter(function(item) { return item.id !== nextItem.id; });
+          saveOfflineQueue(remaining);
+          isFlushingOfflineQueue = false;
+          if (remaining.length > 0) {
+            setTimeout(flushOfflineMutationQueue, 200);
+          } else {
+            renderOfflineQueueBadge(0, 'Fila Offline sincronizada com sucesso!');
+            if (typeof loadDataFromServer === 'function' && typeof loggedUser !== 'undefined' && loggedUser) {
+              isSilentLoad = true;
+              loadDataFromServer();
+            }
+          }
+        })
+        .catch(function() {
+          isFlushingOfflineQueue = false;
+        });
+      }
+
+      if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('online', function() {
+          setTimeout(flushOfflineMutationQueue, 500);
+        });
+        window.addEventListener('DOMContentLoaded', function() {
+          var qLen = getOfflineQueue().length;
+          if (qLen > 0) {
+            renderOfflineQueueBadge(qLen);
+            setTimeout(flushOfflineMutationQueue, 1500);
+          }
+        });
+      }
+
       function executeBackendCall(prop, args, onSuccess, onFailure, retries) {
-        if (retries === undefined) retries = 3;
+        if (retries === undefined) retries = 2;
         if (!BACKEND_URL) {
           alert("Atenção: A URL da API Serverless (BACKEND_URL) não foi configurada no topo do arquivo index.html.");
           if (onFailure) onFailure("BACKEND_URL não configurada.");
+          return;
+        }
+
+        // Fase 3: Enfileiramento imediato se o aparelho estiver sem sinal em operações de campo
+        if (typeof navigator !== 'undefined' && navigator.onLine === false && OFFLINE_QUEUEABLE_OPS[prop]) {
+          enqueueOfflineMutation(prop, args);
+          if (onSuccess) {
+            try {
+              onSuccess({ success: true, queuedOffline: true, record: args[0], data: args[0] });
+            } catch (cbErr) {}
+          }
           return;
         }
 
@@ -79,10 +229,26 @@
           })
         })
         .then(function(res) {
-          if (!res.ok) throw new Error("Erro de resposta HTTP: " + res.status);
+          if (!res.ok) {
+            // Fase 1: Não desperdiçar retentativas em erros definitivos de cliente/sessão (400, 401, 403, 404)
+            if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+              return res.json().catch(function() {
+                return { success: false, error: res.status === 401 ? 'SESSION_EXPIRED' : ('Erro HTTP ' + res.status) };
+              }).then(function(errPayload) {
+                var clientErr = new Error(errPayload && errPayload.error ? errPayload.error : ('Erro HTTP: ' + res.status));
+                clientErr.noRetry = true;
+                clientErr.payload = errPayload;
+                throw clientErr;
+              });
+            }
+            throw new Error("Erro de resposta HTTP: " + res.status);
+          }
           return res.json();
         })
         .then(function(data) {
+          if (getOfflineQueue().length > 0) {
+            setTimeout(flushOfflineMutationQueue, 300);
+          }
           try {
             if (onSuccess) onSuccess(data);
           } catch (callbackErr) {
@@ -90,12 +256,31 @@
           }
         })
         .catch(function(err) {
+          if (err && err.noRetry) {
+            if (err.payload && onSuccess && err.payload.error === 'SESSION_EXPIRED') {
+              try { onSuccess(err.payload); return; } catch (e) {}
+            }
+            if (onFailure) onFailure(err);
+            return;
+          }
           console.warn("Falha na chamada API (" + prop + "). Retentativas restantes: " + retries, err);
           if (retries > 0) {
+            var delayMs = (3 - retries) * 450;
             setTimeout(function() {
               executeBackendCall(prop, args, onSuccess, onFailure, retries - 1);
-            }, 1000);
+            }, delayMs);
           } else {
+            // Fase 3: Se esgotou retentativas por queda de rede em operação de gravação, salva na Fila Offline!
+            var isNetworkFailure = !err || err.name === 'TypeError' || String(err).toLowerCase().indexOf('fetch') !== -1 || (typeof navigator !== 'undefined' && navigator.onLine === false);
+            if (isNetworkFailure && OFFLINE_QUEUEABLE_OPS[prop]) {
+              enqueueOfflineMutation(prop, args);
+              if (onSuccess) {
+                try {
+                  onSuccess({ success: true, queuedOffline: true, record: args[0], data: args[0] });
+                  return;
+                } catch (cbErr) {}
+              }
+            }
             console.error("Erro definitivo de conexão API:", err);
             if (onFailure) onFailure(err);
           }
@@ -5673,12 +5858,13 @@
     var connectionTimeout = null;
     var isSilentLoad = false;
 
-    // Cache local de alta performance (Stale-While-Revalidate)
+    // Cache local de alta performance (Stale-While-Revalidate escopado por usuário)
     function saveAppDataCache(data) {
       try {
         if (!data || !data.success) return;
         var cachePayload = {
           timestamp: Date.now(),
+          username: (loggedUser && loggedUser.username) ? loggedUser.username : '',
           data: data
         };
         localStorage.setItem('atlas_app_data_cache', JSON.stringify(cachePayload));
@@ -5692,6 +5878,10 @@
         var raw = localStorage.getItem('atlas_app_data_cache');
         if (!raw) return false;
         var parsed = JSON.parse(raw);
+        var currentUser = (loggedUser && loggedUser.username) ? loggedUser.username : '';
+        if (parsed && parsed.username && currentUser && parsed.username.toLowerCase() !== currentUser.toLowerCase()) {
+          return false;
+        }
         // Utilizar dados em cache com TTL de até 12 horas para renderização instantânea
         if (parsed && parsed.data && (Date.now() - parsed.timestamp < 12 * 60 * 60 * 1000)) {
           console.log("⚡ [A.T.L.A.S.] Hidratando interface instantaneamente via cache local...");
@@ -5728,6 +5918,7 @@
           formasPagamento: appData.formasPagamento || [],
           orcamentos: appData.orcamentos || [],
           visitas: appData.visitas || [],
+          visitasWindowStart: appData.visitasWindowStart || '',
           assuntosVisita: appData.assuntosVisita || [],
           clinicas: appData.clinicas || [],
           campanhas: appData.campanhas || [],
@@ -5808,6 +5999,7 @@
         appData.formasPagamento = response.formasPagamento || ["Dinheiro", "Pix", "Cartão de Crédito", "Crediário", "Depósito/Transferência"];
         appData.orcamentos = response.orcamentos || [];
         appData.visitas = response.visitas || [];
+        appData.visitasWindowStart = response.visitasWindowStart || '';
         appData.assuntosVisita = response.assuntosVisita || ["Apresentação de Linha", "Feedback de Adaptação", "Lançamento de Lentes", "Visita de Relacionamento"];
         appData.clinicas = response.clinicas || [];
         appData.campanhas = response.campanhas || [];
@@ -10596,12 +10788,15 @@
         return;
       }
 
-      var updated = (appData.orcamentos || []).slice();
-      updated.unshift(record);
+      record.id = record.id || (typeof generateUUID === 'function' ? generateUUID() : ('ORC-' + Date.now()));
+      appData.orcamentos = (appData.orcamentos || []).slice();
+      appData.orcamentos.unshift(record);
+      updateCurrentAppDataCache();
 
       google.script.run
         .withSuccessHandler(function(res) {
           if (!checkSession(res)) return;
+          hideLoading();
           if (res.success) {
             var form = document.getElementById("orcamentoForm");
             if (form) form.reset();
@@ -10620,13 +10815,13 @@
               }
             }
 
-            loadDataFromServer();
+            renderOrcamentosTable(true);
           } else {
-            hideLoading();
             alert("Erro ao salvar: " + res.error);
+            loadDataFromServer();
           }
         })
-        .saveConfigParam('orcamentos', JSON.stringify(updated), loggedUser.username);
+        .upsertOrcamento(record, loggedUser.username);
     }
 
     function renderOrcamentosTable(resetPage) {
@@ -10728,6 +10923,7 @@
       }
 
       var updated = [];
+      var targetDeleteKey = uniqueStr;
       var list = appData.orcamentos || [];
       for (var i = 0; i < list.length; i++) {
         var o = list[i];
@@ -10736,22 +10932,28 @@
                       o.vendedor === vendedor &&
                       o.clienteNome === clienteNome &&
                       Number(o.valorEstimado).toFixed(2) === Number(valorEstimado).toFixed(2);
+        if (matches && o.id && targetDeleteKey === uniqueStr) {
+          targetDeleteKey = o.id;
+        }
         if (!matches) {
           updated.push(o);
         }
       }
+      appData.orcamentos = updated;
+      updateCurrentAppDataCache();
 
       google.script.run
         .withSuccessHandler(function(res) {
           if (!checkSession(res)) return;
+          hideLoading();
           if (res.success) {
-            loadDataFromServer();
+            renderOrcamentosTable(true);
           } else {
-            hideLoading();
             alert("Erro: " + res.error);
+            loadDataFromServer();
           }
         })
-        .saveConfigParam('orcamentos', JSON.stringify(updated), loggedUser.username);
+        .deleteOrcamentoRecord(targetDeleteKey, loggedUser.username);
     }
 
 
@@ -14903,8 +15105,12 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
+            appData.medicos = medicos;
+            updateCurrentAppDataCache();
+            renderBulkLists();
+            renderConfigMedicos();
+            populateSelectors();
             alert("Médicos vinculados com sucesso!");
-            loadDataFromServer();
           } else {
             alert("Erro: " + res.error);
           }
@@ -14913,7 +15119,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('medicos', JSON.stringify(medicos), loggedUser.username);
+        .bulkUpdateMedicosRepresentante(crmsToLink, rep, loggedUser.username);
     }
 
     function applyBulkUnlink() {
@@ -14960,8 +15166,12 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
+            appData.medicos = medicos;
+            updateCurrentAppDataCache();
+            renderBulkLists();
+            renderConfigMedicos();
+            populateSelectors();
             alert("Médicos desvinculados com sucesso!");
-            loadDataFromServer();
           } else {
             alert("Erro: " + res.error);
           }
@@ -14970,7 +15180,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('medicos', JSON.stringify(medicos), loggedUser.username);
+        .bulkUpdateMedicosRepresentante(crmsToUnlink, "", loggedUser.username);
     }
 
     function renderConfigMedicos() {
@@ -15080,9 +15290,13 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
-            alert("Médico salvo com sucesso!");
+            appData.medicos = medicos;
+            updateCurrentAppDataCache();
             resetConfigMedicoForm();
-            loadDataFromServer();
+            renderConfigMedicos();
+            renderBulkLists();
+            populateSelectors();
+            alert("Médico salvo com sucesso!");
           } else {
             alert("Erro: " + res.error);
           }
@@ -15091,7 +15305,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('medicos', JSON.stringify(medicos), loggedUser.username);
+        .upsertMedico(Object.assign({}, medObj, { allowOverwrite: true }), loggedUser.username);
     }
 
     function deleteConfigMedico(idx) {
@@ -15121,8 +15335,12 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
+            appData.medicos = newMedicos;
+            updateCurrentAppDataCache();
+            renderConfigMedicos();
+            renderBulkLists();
+            populateSelectors();
             alert("Médico removido com sucesso!");
-            loadDataFromServer();
           } else {
             alert("Erro: " + res.error);
           }
@@ -15131,7 +15349,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('medicos', JSON.stringify(newMedicos), loggedUser.username);
+        .deleteMedicoRecord(m.idMedico || m.crm, loggedUser.username);
     }
 
     function renderConfigClinicas() {
@@ -15241,9 +15459,12 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
-            alert("Clínica salva com sucesso!");
+            appData.clinicas = clinicas;
+            updateCurrentAppDataCache();
             resetConfigClinicaForm();
-            loadDataFromServer();
+            renderConfigClinicas();
+            populateSelectors();
+            alert("Clínica salva com sucesso!");
           } else {
             alert("Erro: " + res.error);
           }
@@ -15252,7 +15473,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('clinicas', JSON.stringify(clinicas), loggedUser.username);
+        .upsertClinica(clinObj, loggedUser.username);
     }
 
     function deleteConfigClinica(idx) {
@@ -15282,8 +15503,11 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
+            appData.clinicas = newClinicas;
+            updateCurrentAppDataCache();
+            renderConfigClinicas();
+            populateSelectors();
             alert("Clínica removida com sucesso!");
-            loadDataFromServer();
           } else {
             alert("Erro: " + res.error);
           }
@@ -15292,7 +15516,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('clinicas', JSON.stringify(newClinicas), loggedUser.username);
+        .deleteClinicaRecord(c.id || c.nome, loggedUser.username);
     }
 
     var selectedLogoBase64 = "";
@@ -16684,6 +16908,7 @@
           if (!checkSession(res)) return;
           if (res.success) {
             hideLoading();
+            updateCurrentAppDataCache();
             alert("Chamado de assistência registrado com sucesso!");
             document.getElementById("assistenciaForm").reset();
             closeAssistenciaModal();
@@ -16698,7 +16923,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('assistencias', JSON.stringify(appData.assistencias), loggedUser.username);
+        .upsertAssistencia(record, loggedUser.username);
     }
 
     function renderAssistenciasTable() {
@@ -16854,6 +17079,7 @@
           if (!checkSession(res)) return;
           if (res.success) {
             hideLoading();
+            updateCurrentAppDataCache();
             alert("Agendamento confirmado com sucesso!");
             renderAssistenciasTable();
             openAssistNotifModal(id, true);
@@ -16866,7 +17092,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('assistencias', JSON.stringify(appData.assistencias), loggedUser.username);
+        .updateAssistenciaStatus(id, 'CONFIRMADO', loggedUser.username);
     }
 
     function concluirAssistencia(id) {
@@ -16895,6 +17121,7 @@
           if (!checkSession(res)) return;
           if (res.success) {
             hideLoading();
+            updateCurrentAppDataCache();
             alert("Chamado concluído com sucesso!");
             renderAssistenciasTable();
           } else {
@@ -16906,7 +17133,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('assistencias', JSON.stringify(appData.assistencias), loggedUser.username);
+        .updateAssistenciaStatus(id, 'CONCLUIDO', loggedUser.username);
     }
 
     function cancelarAssistencia(id) {
@@ -16935,6 +17162,7 @@
           if (!checkSession(res)) return;
           if (res.success) {
             hideLoading();
+            updateCurrentAppDataCache();
             alert("Chamado cancelado com sucesso!");
             renderAssistenciasTable();
           } else {
@@ -16946,7 +17174,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('assistencias', JSON.stringify(appData.assistencias), loggedUser.username);
+        .updateAssistenciaStatus(id, 'CANCELADO', loggedUser.username);
     }
 
     function excluirAssistencia(id) {
@@ -16972,6 +17200,7 @@
           if (!checkSession(res)) return;
           if (res.success) {
             hideLoading();
+            updateCurrentAppDataCache();
             alert("Registro de chamado excluído!");
             renderAssistenciasTable();
           } else {
@@ -16983,7 +17212,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .saveConfigParam('assistencias', JSON.stringify(appData.assistencias), loggedUser.username);
+        .deleteAssistenciaRecord(id, loggedUser.username);
     }
 
     // --- MÓDULO DE VISITA MÉDICA (FASE 23) ---
@@ -17055,11 +17284,51 @@
       renderVisitasTable();
     }
 
+    var isFetchingHistoricalVisitas = false;
+
+    function ensureHistoricalVisitasLoaded(targetDateStr) {
+      if (!appData || !appData.visitasWindowStart || isFetchingHistoricalVisitas) return false;
+      if (targetDateStr && targetDateStr >= appData.visitasWindowStart) return false;
+      if (!loggedUser || typeof google === 'undefined' || !google.script || !google.script.run) return false;
+
+      isFetchingHistoricalVisitas = true;
+      var fetchFrom = targetDateStr || '2020-01-01';
+      google.script.run
+        .withSuccessHandler(function(res) {
+          isFetchingHistoricalVisitas = false;
+          if (res && res.success && Array.isArray(res.visitas)) {
+            var existingMap = {};
+            var merged = (appData.visitas || []).slice();
+            for (var i = 0; i < merged.length; i++) {
+              existingMap[String(merged[i].id)] = true;
+            }
+            for (var j = 0; j < res.visitas.length; j++) {
+              var vItem = res.visitas[j];
+              if (!existingMap[String(vItem.id)]) {
+                merged.push(vItem);
+                existingMap[String(vItem.id)] = true;
+              }
+            }
+            appData.visitas = merged;
+            appData.visitasWindowStart = fetchFrom;
+            updateCurrentAppDataCache();
+            renderVisitasTable();
+          }
+        })
+        .withFailureHandler(function(err) {
+          isFetchingHistoricalVisitas = false;
+          console.warn("Falha ao buscar histórico estendido de visitas:", err);
+        })
+        .getHistoricalVisitas(fetchFrom, '', loggedUser.username);
+      return true;
+    }
+
     function clearVisitasDateFilter() {
       var filterDataInicio = document.getElementById("visitaFiltroDataInicio");
       var filterDataFim = document.getElementById("visitaFiltroDataFim");
       if (filterDataInicio) filterDataInicio.value = "";
       if (filterDataFim) filterDataFim.value = "";
+      ensureHistoricalVisitasLoaded('2020-01-01');
       renderVisitasTable();
     }
 
@@ -17082,6 +17351,9 @@
       
       var startVal = startValInput ? startValInput.value : "";
       var endVal = endValInput ? endValInput.value : "";
+      if (startVal && appData.visitasWindowStart && startVal < appData.visitasWindowStart) {
+        ensureHistoricalVisitasLoaded(startVal);
+      }
       
       var dInicio = startVal ? new Date(startVal + "T00:00:00") : null;
       var dFim = endVal ? new Date(endVal + "T23:59:59") : null;
@@ -17666,6 +17938,7 @@
             hideLoading();
             if (res.success) {
               appData.clinicas = list;
+              updateCurrentAppDataCache();
               populateSelectors();
               populateVisitaClinicasDropdown();
               document.getElementById("visitaClinicaSelect").value = nome;
@@ -17680,7 +17953,7 @@
             hideLoading();
             alert("Erro no servidor: " + err.toString());
           })
-          .saveConfigParam('clinicas', JSON.stringify(list), loggedUser.username);
+          .upsertClinica(clinObj, loggedUser.username);
       } else {
         google.script.run
           .withSuccessHandler(function(res) {
@@ -17688,6 +17961,7 @@
             hideLoading();
             if (res.success) {
               appData.clinicas.push(clinObj);
+              updateCurrentAppDataCache();
               populateSelectors();
               populateVisitaClinicasDropdown();
               document.getElementById("visitaClinicaSelect").value = nome;
@@ -17730,8 +18004,10 @@
         var rep = loggedUser ? loggedUser.nome : "";
         if (!existingDoc.representante || existingDoc.representante.trim() === '' || removeAccents(existingDoc.representante).toLowerCase() !== removeAccents(rep).toLowerCase()) {
           existingDoc.representante = rep;
+          appData.medicos = list;
+          updateCurrentAppDataCache();
           if (typeof google !== 'undefined' && google.script && google.script.run) {
-            google.script.run.saveConfigParam('medicos', JSON.stringify(list), rep);
+            google.script.run.upsertMedico(Object.assign({}, existingDoc, { allowOverwrite: true }), loggedUser ? loggedUser.username : rep);
           }
         }
         populateVisitaMedicosDropdown();
@@ -17792,6 +18068,7 @@
             hideLoading();
             if (res.success) {
               appData.medicos = list;
+              updateCurrentAppDataCache();
               populateSelectors();
               populateVisitaMedicosDropdown();
               document.getElementById("visitaMedicoSelect").value = crm;
@@ -17806,7 +18083,7 @@
             hideLoading();
             alert("Erro no servidor: " + err.toString());
           })
-          .saveConfigParam('medicos', JSON.stringify(list), loggedUser.username);
+          .upsertMedico(Object.assign({}, medObj, { allowOverwrite: true }), loggedUser.username);
       } else {
         google.script.run
           .withSuccessHandler(function(res) {
@@ -17814,6 +18091,7 @@
             hideLoading();
             if (res.success) {
               appData.medicos.push(medObj);
+              updateCurrentAppDataCache();
               populateSelectors();
               populateVisitaMedicosDropdown();
               document.getElementById("visitaMedicoSelect").value = crm;

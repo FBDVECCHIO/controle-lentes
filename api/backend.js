@@ -80,6 +80,8 @@ async function supabaseFetch(path, options = {}) {
     options.body = options.payload;
     delete options.payload;
   }
+  const silentExpectedErrors = !!options.silentExpectedErrors;
+  delete options.silentExpectedErrors;
   delete options.muteHttpExceptions;
 
   const url = SUPABASE_URL + '/rest/v1' + path;
@@ -87,7 +89,9 @@ async function supabaseFetch(path, options = {}) {
   const text = await response.text();
 
   if (!response.ok) {
-    console.error("Erro API Supabase: " + text + " (URL: " + url + ")");
+    if (!silentExpectedErrors) {
+      console.error("Erro API Supabase: " + text + " (URL: " + url + ")");
+    }
     throw new Error("Erro no banco de dados (" + response.status + "): " + text);
   }
 
@@ -347,57 +351,300 @@ async function validateUserAnyPermission(loggedUser, permissionsList) {
 }
 
 // ==========================================
-// LEITURA DOS DADOS (getAppData)
+// INFRAESTRUTURA DE CACHE E DETECÇÃO RELACIONAL (FASES 1, 2 E 3)
+// ==========================================
+const staticCatalogCache = new Map();
+const STATIC_CATALOG_TTL_MS = 30 * 1000; // 30s para catálogos estáticos com invalidação imediata em mutações
+const relationalTableCache = new Map();
+const upsertConstraintCache = new Map();
+
+function invalidateCatalogCache(key) {
+  if (!key) {
+    staticCatalogCache.clear();
+    return;
+  }
+  staticCatalogCache.delete(key);
+}
+
+async function getCachedCatalog(key, path) {
+  var entry = staticCatalogCache.get(key);
+  if (entry && Date.now() < entry.expiresAt) {
+    return entry.data;
+  }
+  var data = await supabaseFetch(path);
+  staticCatalogCache.set(key, {
+    data: data,
+    expiresAt: Date.now() + STATIC_CATALOG_TTL_MS
+  });
+  return data;
+}
+
+async function fetchRelationalTableSafe(tableName, querySuffix) {
+  var cachedState = relationalTableCache.get(tableName);
+  if (cachedState && !cachedState.available && Date.now() < cachedState.expiresAt) {
+    return null;
+  }
+  try {
+    var rows = await supabaseFetch("/" + tableName + (querySuffix || ""), { silentExpectedErrors: true });
+    relationalTableCache.set(tableName, {
+      available: true,
+      expiresAt: Date.now() + 5 * 60 * 1000
+    });
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    var msg = err ? err.toString() : "";
+    if (msg.indexOf("PGRST205") !== -1 || msg.indexOf("404") !== -1 || msg.indexOf("Could not find the table") !== -1) {
+      relationalTableCache.set(tableName, {
+        available: false,
+        expiresAt: Date.now() + 60 * 1000
+      });
+      return null;
+    }
+    console.error("Erro API Supabase (" + tableName + "): " + msg);
+    throw err;
+  }
+}
+
+async function supabaseUpsertSingleTrip(tableName, conflictCol, matchQuery, payloadObj) {
+  var canUpsert = upsertConstraintCache.get(tableName);
+  if (!canUpsert || Date.now() >= canUpsert.expiresAt || canUpsert.supported !== false) {
+    try {
+      await supabaseFetch("/" + tableName + "?on_conflict=" + encodeURIComponent(conflictCol), {
+        method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
+        payload: JSON.stringify(payloadObj),
+        silentExpectedErrors: true
+      });
+      upsertConstraintCache.set(tableName, {
+        supported: true,
+        expiresAt: Date.now() + 10 * 60 * 1000
+      });
+      return { mode: "upsert" };
+    } catch (upsertErr) {
+      var errStr = upsertErr ? upsertErr.toString() : "";
+      if (errStr.indexOf("42P10") !== -1 || errStr.indexOf("no unique or exclusion constraint") !== -1) {
+        upsertConstraintCache.set(tableName, {
+          supported: false,
+          expiresAt: Date.now() + 60 * 1000
+        });
+      } else {
+        throw upsertErr;
+      }
+    }
+  }
+
+  // Fallback compatível caso o índice UNIQUE ainda não tenha sido criado no banco
+  var exists = await supabaseFetch("/" + tableName + "?" + matchQuery + "&select=" + encodeURIComponent(conflictCol) + "&limit=1");
+  if (exists && exists.length > 0) {
+    await supabaseFetch("/" + tableName + "?" + matchQuery, {
+      method: "PATCH",
+      headers: { "Prefer": "return=minimal" },
+      payload: JSON.stringify(payloadObj)
+    });
+    return { mode: "patch" };
+  } else {
+    await supabaseFetch("/" + tableName, {
+      method: "POST",
+      headers: { "Prefer": "return=minimal" },
+      payload: JSON.stringify(payloadObj)
+    });
+    return { mode: "post" };
+  }
+}
+
+function formatMedicoFromRow(m) {
+  var det = (m.detalhes && typeof m.detalhes === 'object') ? m.detalhes : {};
+  return Object.assign({}, det, {
+    idMedico: m.id || det.idMedico || ('MED-' + m.crm),
+    id: m.id || det.idMedico || ('MED-' + m.crm),
+    nome: m.nome || det.nome || '',
+    crm: m.crm || det.crm || '',
+    representante: m.representante !== undefined && m.representante !== null ? m.representante : (det.representante || '')
+  });
+}
+
+function formatClinicaFromRow(c) {
+  var det = (c.detalhes && typeof c.detalhes === 'object') ? c.detalhes : {};
+  return Object.assign({}, det, {
+    id: c.id || det.id || '',
+    nome: c.nome || det.nome || '',
+    cidade: c.cidade !== undefined && c.cidade !== null ? c.cidade : (det.cidade || ''),
+    representante: c.representante !== undefined && c.representante !== null ? c.representante : (det.representante || '')
+  });
+}
+
+function formatOrcamentoFromRow(o) {
+  var extra = (o.extra && typeof o.extra === 'object') ? o.extra : {};
+  return Object.assign({}, extra, {
+    id: o.id,
+    data: o.data || extra.data || '',
+    loja: o.loja || extra.loja || '',
+    vendedor: o.vendedor || extra.vendedor || '',
+    valorEstimado: Number(o.valor_estimado !== undefined ? o.valor_estimado : (extra.valorEstimado || 0)),
+    clienteNome: o.cliente_nome || extra.clienteNome || '',
+    clienteWhatsApp: o.cliente_whatsapp || extra.clienteWhatsApp || '',
+    clienteEmail: o.cliente_email || extra.clienteEmail || '',
+    motivoPerda: o.motivo_perda || extra.motivoPerda || '',
+    detalhes: o.detalhes !== undefined && o.detalhes !== null ? o.detalhes : (extra.detalhes || '')
+  });
+}
+
+function formatAssistenciaFromRow(a) {
+  var det = (a.detalhes && typeof a.detalhes === 'object') ? a.detalhes : {};
+  return Object.assign({}, det, {
+    id: a.id,
+    osLoja: a.os_loja || det.osLoja || '',
+    loja: a.loja || det.loja || '',
+    clienteNome: a.cliente_nome || det.clienteNome || '',
+    clienteTelefone: a.cliente_telefone || det.clienteTelefone || '',
+    clienteEmail: a.cliente_email || det.clienteEmail || '',
+    lenteOriginal: a.lente_original || det.lenteOriginal || '',
+    motivoQueixa: a.motivo_queixa || det.motivoQueixa || '',
+    detalhesQueixa: a.detalhes_queixa || det.detalhesQueixa || '',
+    tecnicoNome: a.tecnico_nome || det.tecnicoNome || '',
+    tecnicoWhatsApp: a.tecnico_whatsapp || det.tecnicoWhatsApp || '',
+    tecnicoCalendly: a.tecnico_calendly || det.tecnicoCalendly || '',
+    dataAgendamento: a.data_agendamento || det.dataAgendamento || '',
+    status: a.status || det.status || 'PENDENTE_ACEITE'
+  });
+}
+
+function formatVisitaFromRow(v) {
+  var isClin = v.medico_crm === 'CLINICA' || 
+    (v.medico_nome && (v.medico_nome.toLowerCase().includes('clínica') || v.medico_nome.toLowerCase().includes('clinica')));
+  return {
+    id: v.id,
+    data: v.data,
+    hora: v.hora,
+    representante: v.representante,
+    medicoNome: v.medico_nome,
+    medicoCrm: v.medico_crm,
+    medico_nome: v.medico_nome,
+    medico_crm: v.medico_crm,
+    tipo: isClin ? 'Clinica' : 'Medico',
+    clinicaNome: isClin ? v.medico_nome : '',
+    assunto: v.assunto,
+    status: v.status,
+    relato: v.relato || '',
+    lat: (v.lat !== null && v.lat !== undefined && !isNaN(v.lat)) ? Number(v.lat) : null,
+    lng: (v.lng !== null && v.lng !== undefined && !isNaN(v.lng)) ? Number(v.lng) : null,
+    created_at: v.created_at
+  };
+}
+
+// ==========================================
+// LEITURA SELETIVA E DE ALTA VELOCIDADE (getAppData - FASES 1, 2 E 3)
 // ==========================================
 
-async function getAppData(loggedUser) {
+async function getAppData(loggedUser, options) {
   var username = getUserUsername(loggedUser);
   if (!username) {
     return { success: false, error: 'UNAUTHORIZED: Acesso negado. Usuário não autenticado.' };
   }
-  if (!await validateUserSession(loggedUser)) {
+  var userRecord = await getCachedUser(username);
+  if (!userRecord || userRecord.status !== 'ATIVO') {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
 
   try {
-    var paths = [
-      "/lojas",
-      "/laboratorios",
-      "/vendedores",
-      "/representantes",
-      "/contatos_resumo",
-      "/produtos",
-      "/auditoria_logs?order=data_hora.desc&limit=100",
-      "/vendas?order=data.desc&limit=300",
-      "/conferencias?order=data.desc&limit=300",
-      "/config_settings",
-      "/ocorrencias?order=data.desc",
-      "/campanhas?order=id.asc",
-      "/leads?order=id.desc"
-    ];
-    
-    // Dispara todas as consultas em paralelo para tempo mínimo de carregamento
-    const [results, visitasRaw] = await Promise.all([
-      supabaseFetchAll(paths),
-      supabaseFetchPaginated("/visitas_medicas?order=data.desc,hora.desc").catch(function(errVisitas) {
-        console.warn("Aviso ao consultar public.visitas_medicas, usando fallback:", errVisitas);
-        return [];
-      })
+    var opts = (options && typeof options === 'object') ? options : {};
+    var extraPerms = parseExtraPermissions(userRecord.medicos, userRecord);
+    var isFullAdmin = (userRecord.usuario && userRecord.usuario.toLowerCase() === 'admin') || userRecord.configuracoes === 'ATIVO';
+    var userLoja = userRecord.loja || 'Todos';
+    var hasStoreScope = (userLoja && userLoja !== 'Todos' && !isFullAdmin);
+
+    // Fase 2: Determinação cirúrgica de escopo por perfil (Role-Based Selective Payload + Proteção LGPD)
+    var needFullVendas = isFullAdmin ||
+      userRecord.venda === 'ATIVO' ||
+      userRecord.log_vendas === 'ATIVO' ||
+      userRecord.resumo_vendas === 'ATIVO' ||
+      userRecord.dashboard === 'ATIVO' ||
+      userRecord.auditoria === 'ATIVO' ||
+      extraPerms.garantias === 'ATIVO' ||
+      extraPerms.devolucoes === 'ATIVO' ||
+      extraPerms.assistencia === 'ATIVO' ||
+      extraPerms.vendaOSList === 'ATIVO';
+
+    var needMedicosComissaoOnly = !needFullVendas && extraPerms.medicos === 'ATIVO';
+    var needVendas = needFullVendas || needMedicosComissaoOnly;
+
+    var needConferencias = isFullAdmin ||
+      userRecord.conferencia === 'ATIVO' ||
+      userRecord.registros === 'ATIVO' ||
+      userRecord.dashboard === 'ATIVO' ||
+      userRecord.auditoria === 'ATIVO' ||
+      extraPerms.garantias === 'ATIVO' ||
+      extraPerms.devolucoes === 'ATIVO';
+
+    var needProdutos = isFullAdmin || needFullVendas || needConferencias || extraPerms.orcamentos === 'ATIVO';
+    var needLogs = isFullAdmin || userRecord.logs === 'ATIVO' || userRecord.auditoria === 'ATIVO';
+    var needCrm = isFullAdmin || extraPerms.leadKanban === 'ATIVO' || extraPerms.leadControle === 'ATIVO' || userRecord.dashboard === 'ATIVO';
+    var needOcorrencias = isFullAdmin || extraPerms.ocorrencias === 'ATIVO' || userRecord.auditoria === 'ATIVO' || userRecord.dashboard === 'ATIVO';
+    var needVisitas = isFullAdmin || extraPerms.visitaMedica === 'ATIVO' || extraPerms.medicos === 'ATIVO' || userRecord.dashboard === 'ATIVO';
+    var needOrcamentos = isFullAdmin || extraPerms.orcamentos === 'ATIVO' || userRecord.venda === 'ATIVO' || userRecord.dashboard === 'ATIVO';
+    var needAssistencias = isFullAdmin || extraPerms.assistencia === 'ATIVO' || userRecord.venda === 'ATIVO' || userRecord.conferencia === 'ATIVO';
+
+    // Janela deslizante padrão de 90 dias para visitas_medicas (1 consulta indexada rápida em vez de paginação sequencial infinita)
+    var daysWindow = Number(opts.daysWindow) > 0 ? Number(opts.daysWindow) : 90;
+    var windowCutoffDate = new Date(Date.now() - daysWindow * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    var fullHistory = !!opts.fullHistory;
+
+    var storeFilterEq = hasStoreScope ? ("&loja=eq." + encodeURIComponent(userLoja)) : "";
+    var leadStoreFilterEq = hasStoreScope ? ("&loja_destino=eq." + encodeURIComponent(userLoja)) : "";
+
+    var visitasPromise = Promise.resolve([]);
+    if (needVisitas) {
+      if (fullHistory) {
+        visitasPromise = supabaseFetchPaginated("/visitas_medicas?order=data.desc,hora.desc").catch(function() { return []; });
+      } else {
+        visitasPromise = supabaseFetch("/visitas_medicas?data=gte." + windowCutoffDate + "&order=data.desc,hora.desc&limit=1000").catch(function() { return []; });
+      }
+    }
+
+    var vendasSelectPath = needMedicosComissaoOnly
+      ? ("/vendas?select=os_venda,data,loja,total_venda,detalhes&order=data.desc&limit=300" + storeFilterEq)
+      : ("/vendas?order=data.desc&limit=300" + storeFilterEq);
+
+    // Dispara todas as consultas estritamente necessárias em paralelo (com catálogos estáticos em memória)
+    const [
+      lojasRaw,
+      labsRaw,
+      vendedoresRaw,
+      representantesRaw,
+      contatosRaw,
+      produtosRaw,
+      configsList,
+      logsRaw,
+      vendasRaw,
+      confsRaw,
+      ocorrenciasRaw,
+      campsRaw,
+      leadsRaw,
+      visitasRaw,
+      relMedicos,
+      relClinicas,
+      relOrcamentos,
+      relAssistencias
+    ] = await Promise.all([
+      getCachedCatalog('lojas', '/lojas'),
+      needProdutos || needConferencias || isFullAdmin ? getCachedCatalog('laboratorios', '/laboratorios') : Promise.resolve([]),
+      needFullVendas || needOrcamentos || isFullAdmin ? getCachedCatalog('vendedores', '/vendedores') : Promise.resolve([]),
+      getCachedCatalog('representantes', '/representantes'),
+      needFullVendas || isFullAdmin ? getCachedCatalog('contatos_resumo', '/contatos_resumo') : Promise.resolve([]),
+      needProdutos ? getCachedCatalog('produtos', '/produtos') : Promise.resolve([]),
+      getCachedCatalog('config_settings', '/config_settings'),
+      needLogs ? supabaseFetch("/auditoria_logs?order=data_hora.desc&limit=100") : Promise.resolve([]),
+      needVendas ? supabaseFetch(vendasSelectPath) : Promise.resolve([]),
+      needConferencias ? supabaseFetch("/conferencias?order=data.desc&limit=300" + storeFilterEq) : Promise.resolve([]),
+      needOcorrencias ? supabaseFetch("/ocorrencias?order=data.desc&limit=300" + storeFilterEq) : Promise.resolve([]),
+      needCrm ? supabaseFetch("/campanhas?order=id.asc") : Promise.resolve([]),
+      needCrm ? supabaseFetch("/leads?order=id.desc&limit=500" + leadStoreFilterEq) : Promise.resolve([]),
+      visitasPromise,
+      fetchRelationalTableSafe('medicos', '?order=nome.asc'),
+      fetchRelationalTableSafe('clinicas', '?order=nome.asc'),
+      needOrcamentos ? fetchRelationalTableSafe('orcamentos', '?order=data.desc&limit=500' + storeFilterEq) : Promise.resolve(null),
+      needAssistencias ? fetchRelationalTableSafe('assistencias', '?order=data_agendamento.desc&limit=300' + storeFilterEq) : Promise.resolve(null)
     ]);
-    
-    var lojasRaw = results[0] || [];
-    var labsRaw = results[1] || [];
-    var vendedoresRaw = results[2] || [];
-    var representantesRaw = results[3] || [];
-    var contatosRaw = results[4] || [];
-    var produtosRaw = results[5] || [];
-    var logsRaw = results[6] || [];
-    var vendasRaw = results[7] || [];
-    var confsRaw = results[8] || [];
-    var configsList = results[9] || [];
-    var ocorrenciasRaw = results[10] || [];
-    var campsRaw = results[11] || [];
-    var leadsRaw = results[12] || [];
 
     // 1. Obter tabelas simples
     var lojas = lojasRaw.map(function(x) { return x.nome; });
@@ -446,17 +693,35 @@ async function getAppData(loggedUser) {
       };
     });
     
-    // 3. Vendas (Formatando o JSONB detalhes com os metadados externos)
-    var vendas = vendasRaw.map(function(v) {
-      var details = v.detalhes || {};
-      details.osVenda = v.os_venda;
-      details.data = ymdToDmy(v.data);
-      details.loja = v.loja;
-      details.vendedor = v.vendedor;
-      details.clienteNome = v.cliente_nome;
-      details.totalVenda = Number(v.total_venda);
-      return details;
-    });
+    // 3. Vendas (Formatando o JSONB detalhes com os metadados externos; projeção enxuta LGPD para perfil Representante)
+    var vendas = needMedicosComissaoOnly
+      ? vendasRaw.reduce(function(acc, v) {
+          var det = v.detalhes || {};
+          var mCrm = det.medicoCrm || '';
+          var mNome = det.medicoNome || '';
+          if ((mCrm && mCrm.trim() !== '') || (mNome && mNome.trim() !== '')) {
+            acc.push({
+              osVenda: v.os_venda,
+              data: ymdToDmy(v.data),
+              loja: v.loja,
+              totalVenda: Number(v.total_venda) || 0,
+              medicoCrm: mCrm,
+              medicoNome: mNome,
+              medicoComissao: det.medicoComissao || 'S'
+            });
+          }
+          return acc;
+        }, [])
+      : vendasRaw.map(function(v) {
+          var details = v.detalhes || {};
+          details.osVenda = v.os_venda;
+          details.data = ymdToDmy(v.data);
+          details.loja = v.loja;
+          details.vendedor = v.vendedor;
+          details.clienteNome = v.cliente_nome;
+          details.totalVenda = Number(v.total_venda);
+          return details;
+        });
 
     // 4. Conferências / Lançamentos Lab (Formatando JSONB)
     var conferencias = confsRaw.map(function(c) {
@@ -578,29 +843,22 @@ async function getAppData(loggedUser) {
       if (c.key === 'assistTemplateClienteConfirmado') assistTemplates.clienteConfirmado = c.value;
     });
 
+    // Fase 3: Preferência pelas tabelas relacionais dedicadas com fallback automático sem perda
+    if (Array.isArray(relMedicos) && relMedicos.length > 0) {
+      medicos = relMedicos.map(formatMedicoFromRow);
+    }
+    if (Array.isArray(relClinicas) && relClinicas.length > 0) {
+      clinicas = relClinicas.map(formatClinicaFromRow);
+    }
+    if (Array.isArray(relOrcamentos) && relOrcamentos.length > 0) {
+      orcamentos = relOrcamentos.map(formatOrcamentoFromRow);
+    }
+    if (Array.isArray(relAssistencias) && relAssistencias.length > 0) {
+      assistencias = relAssistencias.map(formatAssistenciaFromRow);
+    }
+
     if (visitasRaw && visitasRaw.length > 0) {
-      visitas = visitasRaw.map(function(v) {
-        var isClin = v.medico_crm === 'CLINICA' || 
-          (v.medico_nome && (v.medico_nome.toLowerCase().includes('clínica') || v.medico_nome.toLowerCase().includes('clinica')));
-        return {
-          id: v.id,
-          data: v.data,
-          hora: v.hora,
-          representante: v.representante,
-          medicoNome: v.medico_nome,
-          medicoCrm: v.medico_crm,
-          medico_nome: v.medico_nome,
-          medico_crm: v.medico_crm,
-          tipo: isClin ? 'Clinica' : 'Medico',
-          clinicaNome: isClin ? v.medico_nome : '',
-          assunto: v.assunto,
-          status: v.status,
-          relato: v.relato || '',
-          lat: (v.lat !== null && v.lat !== undefined && !isNaN(v.lat)) ? Number(v.lat) : null,
-          lng: (v.lng !== null && v.lng !== undefined && !isNaN(v.lng)) ? Number(v.lng) : null,
-          created_at: v.created_at
-        };
-      });
+      visitas = visitasRaw.map(formatVisitaFromRow);
     }
 
     if (!hasCustomVendedores) {
@@ -630,10 +888,8 @@ async function getAppData(loggedUser) {
         var hora_visita = "";
         if (l.dia_horario) {
           try {
-            // dia_horario no banco é ISO string
             var dt = new Date(l.dia_horario);
             if (!isNaN(dt.getTime())) {
-              // Ajusta fuso horário local se necessário
               var year = dt.getFullYear();
               var month = ("0" + (dt.getMonth() + 1)).slice(-2);
               var day = ("0" + dt.getDate()).slice(-2);
@@ -699,6 +955,7 @@ async function getAppData(loggedUser) {
       formasPagamento: formasPagamento,
       orcamentos: orcamentos,
       visitas: visitas,
+      visitasWindowStart: fullHistory ? '1970-01-01' : windowCutoffDate,
       assuntosVisita: assuntosVisita,
       campanhas: campanhas,
       leads: leads,
@@ -709,8 +966,38 @@ async function getAppData(loggedUser) {
   }
 }
 
+async function getHistoricalVisitas(startDate, endDate, loggedUser) {
+  var username = getUserUsername(loggedUser);
+  if (!username) {
+    return { success: false, error: 'UNAUTHORIZED' };
+  }
+  var hasPerm = await validateUserAnyPermission(loggedUser, ['visitaMedica', 'medicos', 'dashboard', 'configuracoes']);
+  if (!hasPerm) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  try {
+    var filters = [];
+    if (startDate && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      filters.push("data=gte." + encodeURIComponent(startDate));
+    }
+    if (endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      filters.push("data=lte." + encodeURIComponent(endDate));
+    }
+    filters.push("order=data.desc,hora.desc");
+    var path = "/visitas_medicas?" + filters.join("&");
+    var raw = await supabaseFetchPaginated(path);
+    return {
+      success: true,
+      visitas: (raw || []).map(formatVisitaFromRow),
+      visitasWindowStart: startDate || '1970-01-01'
+    };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
 // ==========================================
-// SALVAR E EXCLUIR VENDAS
+// SALVAR E EXCLUIR VENDAS (FASE 1: UPSERT ATÔMICO EM VIAGEM ÚNICA)
 // ==========================================
 
 async function addVenda(saleData, loggedUserUsername) {
@@ -718,7 +1005,6 @@ async function addVenda(saleData, loggedUserUsername) {
     var os = saleData.osVenda;
     if (!os) throw new Error("OS da Venda é obrigatório.");
     
-    // Limpar chaves externas do objeto para o JSONB
     var metadata = {
       os_venda: os,
       data: dmyToYmd(saleData.data),
@@ -738,28 +1024,10 @@ async function addVenda(saleData, loggedUserUsername) {
     
     metadata.detalhes = payload;
 
-    // Verificar se a OS já existe no banco
-    var exists = await supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os));
-    
-    if (exists.length > 0) {
-      // Atualizar venda em paralelo com log de auditoria
-      await Promise.all([
-        supabaseFetch("/vendas?os_venda=eq." + encodeURIComponent(os), {
-          method: "PATCH",
-          payload: JSON.stringify(metadata)
-        }),
-        logAction(loggedUserUsername, "Atualizou venda OS: " + os)
-      ]);
-    } else {
-      // Criar nova venda em paralelo com log de auditoria
-      await Promise.all([
-        supabaseFetch("/vendas", {
-          method: "POST",
-          payload: JSON.stringify(metadata)
-        }),
-        logAction(loggedUserUsername, "Cadastrou nova venda OS: " + os)
-      ]);
-    }
+    await Promise.all([
+      supabaseUpsertSingleTrip("vendas", "os_venda", "os_venda=eq." + encodeURIComponent(os), metadata),
+      logAction(loggedUserUsername, "Gravou venda OS: " + os)
+    ]);
     
     return { success: true };
   } catch (e) {
@@ -836,7 +1104,7 @@ async function deleteVendas(osList, loggedUserUsername) {
 }
 
 // ==========================================
-// SALVAR E EXCLUIR CONFERÊNCIAS (LAB)
+// SALVAR E EXCLUIR CONFERÊNCIAS (LAB - FASE 1: UPSERT EM VIAGEM ÚNICA)
 // ==========================================
 
 async function addConferencia(confData, loggedUserUsername) {
@@ -867,26 +1135,10 @@ async function addConferencia(confData, loggedUserUsername) {
     
     metadata.detalhes = payload;
     
-    // Verificar se o lançamento já existe
-    var exists = await supabaseFetch("/conferencias?os=eq." + encodeURIComponent(os));
-    
-    if (exists.length > 0) {
-      await Promise.all([
-        supabaseFetch("/conferencias?os=eq." + encodeURIComponent(os), {
-          method: "PATCH",
-          payload: JSON.stringify(metadata)
-        }),
-        logAction(loggedUserUsername, "Atualizou conferência OS: " + os)
-      ]);
-    } else {
-      await Promise.all([
-        supabaseFetch("/conferencias", {
-          method: "POST",
-          payload: JSON.stringify(metadata)
-        }),
-        logAction(loggedUserUsername, "Lançou conferência OS: " + os)
-      ]);
-    }
+    await Promise.all([
+      supabaseUpsertSingleTrip("conferencias", "os", "os=eq." + encodeURIComponent(os.toString()), metadata),
+      logAction(loggedUserUsername, "Gravou conferência OS: " + os)
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -901,7 +1153,8 @@ async function deleteConferencia(os, dataStr, loggedUserUsername) {
     }
     await Promise.all([
       supabaseFetch(query, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: { "Prefer": "return=minimal" }
       }),
       logAction(loggedUserUsername, "Excluiu conferência OS: " + os)
     ]);
@@ -922,10 +1175,12 @@ async function deleteConferenciaGroup(items, loggedUserUsername) {
         query += "&data=eq." + encodeURIComponent(dmyToYmd(dataStr));
       }
       return supabaseFetch(query, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: { "Prefer": "return=minimal" }
       });
-    }));
-    await logAction(loggedUserUsername, "Excluiu grupo de conferências (" + items.length + " itens)");
+    }).concat([
+      logAction(loggedUserUsername, "Excluiu grupo de conferências (" + items.length + " itens)")
+    ]));
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -933,7 +1188,7 @@ async function deleteConferenciaGroup(items, loggedUserUsername) {
 }
 
 // ==========================================
-// OPERAÇÕES DE CONFIGURAÇÃO (CRUD TABELAS APOIO)
+// OPERAÇÕES DE CONFIGURAÇÃO (CRUD TABELAS APOIO COM INVALIDAÇÃO DE CACHE)
 // ==========================================
 
 // 1. Lojas
@@ -946,11 +1201,15 @@ async function addLoja(name, loggedUserUsername) {
     if (exists.length > 0) {
       return { success: true };
     }
-    await supabaseFetch("/lojas", {
-      method: "POST",
-      payload: JSON.stringify({ nome: name })
-    });
-    await logAction(loggedUserUsername, "Cadastrou loja: " + name);
+    await Promise.all([
+      supabaseFetch("/lojas", {
+        method: "POST",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: name })
+      }),
+      logAction(loggedUserUsername, "Cadastrou loja: " + name)
+    ]);
+    invalidateCatalogCache('lojas');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -962,8 +1221,11 @@ async function deleteLoja(name, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/lojas?nome=eq." + encodeURIComponent(name), { method: "DELETE" });
-    await logAction(loggedUserUsername, "Excluiu loja: " + name);
+    await Promise.all([
+      supabaseFetch("/lojas?nome=eq." + encodeURIComponent(name), { method: "DELETE", headers: { "Prefer": "return=minimal" } }),
+      logAction(loggedUserUsername, "Excluiu loja: " + name)
+    ]);
+    invalidateCatalogCache('lojas');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -975,11 +1237,15 @@ async function renameLoja(oldName, newName, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/lojas?nome=eq." + encodeURIComponent(oldName), {
-      method: "PATCH",
-      payload: JSON.stringify({ nome: newName })
-    });
-    await logAction(loggedUserUsername, "Renomeou loja de '" + oldName + "' para '" + newName + "'");
+    await Promise.all([
+      supabaseFetch("/lojas?nome=eq." + encodeURIComponent(oldName), {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: newName })
+      }),
+      logAction(loggedUserUsername, "Renomeou loja de '" + oldName + "' para '" + newName + "'")
+    ]);
+    invalidateCatalogCache('lojas');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -996,11 +1262,15 @@ async function addLab(name, loggedUserUsername) {
     if (exists.length > 0) {
       return { success: true };
     }
-    await supabaseFetch("/laboratorios", {
-      method: "POST",
-      payload: JSON.stringify({ nome: name })
-    });
-    await logAction(loggedUserUsername, "Cadastrou laboratório: " + name);
+    await Promise.all([
+      supabaseFetch("/laboratorios", {
+        method: "POST",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: name })
+      }),
+      logAction(loggedUserUsername, "Cadastrou laboratório: " + name)
+    ]);
+    invalidateCatalogCache('laboratorios');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1012,8 +1282,11 @@ async function deleteLab(name, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/laboratorios?nome=eq." + encodeURIComponent(name), { method: "DELETE" });
-    await logAction(loggedUserUsername, "Excluiu laboratório: " + name);
+    await Promise.all([
+      supabaseFetch("/laboratorios?nome=eq." + encodeURIComponent(name), { method: "DELETE", headers: { "Prefer": "return=minimal" } }),
+      logAction(loggedUserUsername, "Excluiu laboratório: " + name)
+    ]);
+    invalidateCatalogCache('laboratorios');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1025,11 +1298,15 @@ async function renameLab(oldName, newName, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/laboratorios?nome=eq." + encodeURIComponent(oldName), {
-      method: "PATCH",
-      payload: JSON.stringify({ nome: newName })
-    });
-    await logAction(loggedUserUsername, "Renomeou laboratório de '" + oldName + "' para '" + newName + "'");
+    await Promise.all([
+      supabaseFetch("/laboratorios?nome=eq." + encodeURIComponent(oldName), {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: newName })
+      }),
+      logAction(loggedUserUsername, "Renomeou laboratório de '" + oldName + "' para '" + newName + "'")
+    ]);
+    invalidateCatalogCache('laboratorios');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1043,11 +1320,15 @@ async function addVendedor(name, loggedUserUsername) {
     if (exists.length > 0) {
       return { success: true };
     }
-    await supabaseFetch("/vendedores", {
-      method: "POST",
-      payload: JSON.stringify({ nome: name })
-    });
-    await logAction(loggedUserUsername, "Cadastrou vendedor: " + name);
+    await Promise.all([
+      supabaseFetch("/vendedores", {
+        method: "POST",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: name })
+      }),
+      logAction(loggedUserUsername, "Cadastrou vendedor: " + name)
+    ]);
+    invalidateCatalogCache('vendedores');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1056,8 +1337,11 @@ async function addVendedor(name, loggedUserUsername) {
 
 async function deleteVendedor(name, loggedUserUsername) {
   try {
-    await supabaseFetch("/vendedores?nome=eq." + encodeURIComponent(name), { method: "DELETE" });
-    await logAction(loggedUserUsername, "Excluiu vendedor: " + name);
+    await Promise.all([
+      supabaseFetch("/vendedores?nome=eq." + encodeURIComponent(name), { method: "DELETE", headers: { "Prefer": "return=minimal" } }),
+      logAction(loggedUserUsername, "Excluiu vendedor: " + name)
+    ]);
+    invalidateCatalogCache('vendedores');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1116,6 +1400,7 @@ async function saveRepresentanteWithPassword(oldName, newName, password, loggedU
 
         await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(oldName), {
           method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
           payload: JSON.stringify({ nome: newName })
         });
 
@@ -1123,53 +1408,66 @@ async function saveRepresentanteWithPassword(oldName, newName, password, loggedU
         try {
           await supabaseFetch("/visitas_medicas?representante=eq." + encodeURIComponent(oldName), {
             method: "PATCH",
+            headers: { "Prefer": "return=minimal" },
             payload: JSON.stringify({ representante: newName })
           });
           await supabaseFetch("/medicos?representante=eq." + encodeURIComponent(oldName), {
             method: "PATCH",
+            headers: { "Prefer": "return=minimal" },
             payload: JSON.stringify({ representante: newName })
           });
           await supabaseFetch("/clinicas?representante=eq." + encodeURIComponent(oldName), {
             method: "PATCH",
+            headers: { "Prefer": "return=minimal" },
             payload: JSON.stringify({ representante: newName })
           });
         } catch (linkErr) {
           console.warn("Aviso ao atualizar vínculos de representante:", linkErr);
         }
 
-        // Se existia conta de usuário com o nome antigo, atualiza para o novo nome
         var oldUsers = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(oldName));
         if (oldUsers && oldUsers.length > 0) {
           await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(oldUsers[0].usuario), {
             method: "PATCH",
+            headers: { "Prefer": "return=minimal" },
             payload: JSON.stringify({ usuario: newName, nome: newName })
           });
+          invalidateUserCache(oldUsers[0].usuario);
+          invalidateUserCache(newName);
         }
         await logAction(loggedUserUsername, "Renomeou representante de '" + oldName + "' para '" + newName + "'");
       }
     } else {
       var exists = await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(finalName));
       if (!exists || exists.length === 0) {
-        await supabaseFetch("/representantes", {
-          method: "POST",
-          payload: JSON.stringify({ nome: finalName })
-        });
-        await logAction(loggedUserUsername, "Cadastrou representante: " + finalName);
+        await Promise.all([
+          supabaseFetch("/representantes", {
+            method: "POST",
+            headers: { "Prefer": "return=minimal" },
+            payload: JSON.stringify({ nome: finalName })
+          }),
+          logAction(loggedUserUsername, "Cadastrou representante: " + finalName)
+        ]);
       }
     }
+    invalidateCatalogCache('representantes');
 
     // 2. Gerenciamento e Reset de Senha no Cadastro de Usuários
     if (password) {
       var users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(finalName));
       if (users && users.length > 0) {
-        await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(users[0].usuario), {
-          method: "PATCH",
-          payload: JSON.stringify({
-            senha: password,
-            status: 'ATIVO'
-          })
-        });
-        await logAction(loggedUserUsername, "Resetou a senha de acesso do representante: " + finalName);
+        await Promise.all([
+          supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(users[0].usuario), {
+            method: "PATCH",
+            headers: { "Prefer": "return=minimal" },
+            payload: JSON.stringify({
+              senha: password,
+              status: 'ATIVO'
+            })
+          }),
+          logAction(loggedUserUsername, "Resetou a senha de acesso do representante: " + finalName)
+        ]);
+        invalidateUserCache(users[0].usuario);
       } else {
         var newRepUser = {
           usuario: finalName,
@@ -1186,13 +1484,17 @@ async function saveRepresentanteWithPassword(oldName, newName, password, loggedU
           venda: 'ATIVO',
           log_vendas: 'INATIVO',
           resumo_vendas: 'INATIVO',
-          medicos: 'med,vis' // Habilita médicos e visitas médicas
+          medicos: 'med,vis'
         };
-        await supabaseFetch("/usuarios", {
-          method: "POST",
-          payload: JSON.stringify(newRepUser)
-        });
-        await logAction(loggedUserUsername, "Criou conta de acesso com senha para o representante: " + finalName);
+        await Promise.all([
+          supabaseFetch("/usuarios", {
+            method: "POST",
+            headers: { "Prefer": "return=minimal" },
+            payload: JSON.stringify(newRepUser)
+          }),
+          logAction(loggedUserUsername, "Criou conta de acesso com senha para o representante: " + finalName)
+        ]);
+        invalidateUserCache(finalName);
       }
     }
 
@@ -1215,14 +1517,17 @@ async function deleteRepresentante(name, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(name), { method: "DELETE" });
+    await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(name), { method: "DELETE", headers: { "Prefer": "return=minimal" } });
+    invalidateCatalogCache('representantes');
     try {
       var users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(name));
       if (users && users.length > 0) {
         await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(users[0].usuario), {
           method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
           payload: JSON.stringify({ status: 'INATIVO' })
         });
+        invalidateUserCache(users[0].usuario);
       }
     } catch (uErr) {
       console.warn("Aviso ao inativar login do representante excluído:", uErr);
@@ -1242,18 +1547,26 @@ async function addContatoResumo(name, phone, loggedUserUsername) {
   try {
     var exists = await supabaseFetch("/contatos_resumo?nome=eq." + encodeURIComponent(name));
     if (exists.length > 0) {
-      await supabaseFetch("/contatos_resumo?nome=eq." + encodeURIComponent(name), {
-        method: "PATCH",
-        payload: JSON.stringify({ telefone: phone })
-      });
-      await logAction(loggedUserUsername, "Atualizou contato resumo: " + name);
+      await Promise.all([
+        supabaseFetch("/contatos_resumo?nome=eq." + encodeURIComponent(name), {
+          method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
+          payload: JSON.stringify({ telefone: phone })
+        }),
+        logAction(loggedUserUsername, "Atualizou contato resumo: " + name)
+      ]);
+      invalidateCatalogCache('contatos_resumo');
       return { success: true };
     }
-    await supabaseFetch("/contatos_resumo", {
-      method: "POST",
-      payload: JSON.stringify({ nome: name, telefone: phone })
-    });
-    await logAction(loggedUserUsername, "Cadastrou contato resumo: " + name);
+    await Promise.all([
+      supabaseFetch("/contatos_resumo", {
+        method: "POST",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: name, telefone: phone })
+      }),
+      logAction(loggedUserUsername, "Cadastrou contato resumo: " + name)
+    ]);
+    invalidateCatalogCache('contatos_resumo');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1265,8 +1578,11 @@ async function deleteContatoResumo(name, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/contatos_resumo?nome=eq." + encodeURIComponent(name), { method: "DELETE" });
-    await logAction(loggedUserUsername, "Excluiu contato resumo: " + name);
+    await Promise.all([
+      supabaseFetch("/contatos_resumo?nome=eq." + encodeURIComponent(name), { method: "DELETE", headers: { "Prefer": "return=minimal" } }),
+      logAction(loggedUserUsername, "Excluiu contato resumo: " + name)
+    ]);
+    invalidateCatalogCache('contatos_resumo');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1281,27 +1597,35 @@ async function addProduto(record, loggedUserUsername) {
   try {
     var exists = await supabaseFetch("/produtos?nome=eq." + encodeURIComponent(record.nome));
     if (exists.length > 0) {
-      await supabaseFetch("/produtos?nome=eq." + encodeURIComponent(record.nome), {
-        method: "PATCH",
+      await Promise.all([
+        supabaseFetch("/produtos?nome=eq." + encodeURIComponent(record.nome), {
+          method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
+          payload: JSON.stringify({
+            preco: Number(record.preco) || 0,
+            laboratorio: record.laboratorio,
+            tipo: record.tipo
+          })
+        }),
+        logAction(loggedUserUsername, "Atualizou produto: " + record.nome)
+      ]);
+      invalidateCatalogCache('produtos');
+      return { success: true };
+    }
+    await Promise.all([
+      supabaseFetch("/produtos", {
+        method: "POST",
+        headers: { "Prefer": "return=minimal" },
         payload: JSON.stringify({
+          nome: record.nome,
           preco: Number(record.preco) || 0,
           laboratorio: record.laboratorio,
           tipo: record.tipo
         })
-      });
-      await logAction(loggedUserUsername, "Atualizou produto: " + record.nome);
-      return { success: true };
-    }
-    await supabaseFetch("/produtos", {
-      method: "POST",
-      payload: JSON.stringify({
-        nome: record.nome,
-        preco: Number(record.preco) || 0,
-        laboratorio: record.laboratorio,
-        tipo: record.tipo
-      })
-    });
-    await logAction(loggedUserUsername, "Cadastrou produto: " + record.nome);
+      }),
+      logAction(loggedUserUsername, "Cadastrou produto: " + record.nome)
+    ]);
+    invalidateCatalogCache('produtos');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1313,8 +1637,11 @@ async function deleteProduto(name, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/produtos?nome=eq." + encodeURIComponent(name), { method: "DELETE" });
-    await logAction(loggedUserUsername, "Excluiu produto: " + name);
+    await Promise.all([
+      supabaseFetch("/produtos?nome=eq." + encodeURIComponent(name), { method: "DELETE", headers: { "Prefer": "return=minimal" } }),
+      logAction(loggedUserUsername, "Excluiu produto: " + name)
+    ]);
+    invalidateCatalogCache('produtos');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1331,20 +1658,25 @@ async function saveConfigKey(key, value) {
   if (exists.length > 0) {
     await supabaseFetch("/config_settings?key=eq." + encodeURIComponent(key), {
       method: "PATCH",
+      headers: { "Prefer": "return=minimal" },
       payload: JSON.stringify({ value: value.toString() })
     });
   } else {
     await supabaseFetch("/config_settings", {
       method: "POST",
+      headers: { "Prefer": "return=minimal" },
       payload: JSON.stringify({ key: key, value: value.toString() })
     });
   }
+  invalidateCatalogCache('config_settings');
 }
 
 async function saveLogoUrl(url, loggedUserUsername) {
   try {
-    await saveConfigKey('logoUrl', url);
-    await logAction(loggedUserUsername, "Atualizou URL do logotipo");
+    await Promise.all([
+      saveConfigKey('logoUrl', url),
+      logAction(loggedUserUsername, "Atualizou URL do logotipo")
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1353,8 +1685,10 @@ async function saveLogoUrl(url, loggedUserUsername) {
 
 async function deleteLogoUrl(loggedUserUsername) {
   try {
-    await saveConfigKey('logoUrl', '');
-    await logAction(loggedUserUsername, "Excluiu logotipo customizado");
+    await Promise.all([
+      saveConfigKey('logoUrl', ''),
+      logAction(loggedUserUsername, "Excluiu logotipo customizado")
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1363,8 +1697,10 @@ async function deleteLogoUrl(loggedUserUsername) {
 
 async function saveSessionTimeoutSetting(value, loggedUserUsername) {
   try {
-    await saveConfigKey('sessionTimeout', value);
-    await logAction(loggedUserUsername, "Alterou timeout da sessão para " + value + " horas");
+    await Promise.all([
+      saveConfigKey('sessionTimeout', value),
+      logAction(loggedUserUsername, "Alterou timeout da sessão para " + value + " horas")
+    ]);
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -1924,27 +2260,16 @@ async function deleteLancamentosBulk(items, loggedUserUsername) {
 }
 
 async function saveConfigParam(key, val, loggedUserUsername) {
-  // Relax validation for specific operation keys, otherwise require 'configuracoes'
   if (key === 'assistencias' || key === 'visitas') {
-    var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-    var isConf = await validateUserSession(loggedUserUsername, 'conferencia');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    var isVisita = await validateUserSession(loggedUserUsername, 'visitaMedica');
-    var isAssistencia = await validateUserSession(loggedUserUsername, 'assistencia');
-    if (!isVenda && !isConf && !isConfig && !isVisita && !isAssistencia) {
+    if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia'])) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
   } else if (key === 'orcamentos') {
-    var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    if (!isVenda && !isConfig) {
+    if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'orcamentos', 'configuracoes'])) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
   } else if (key === 'medicos' || key === 'clinicas') {
-    var isVenda = await validateUserSession(loggedUserUsername, 'venda');
-    var isConfig = await validateUserSession(loggedUserUsername, 'configuracoes');
-    var isVisita = await validateUserSession(loggedUserUsername, 'visitaMedica');
-    if (!isVenda && !isConfig && !isVisita) {
+    if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'medicos', 'configuracoes', 'visitaMedica'])) {
       return { success: false, error: 'SESSION_EXPIRED' };
     }
   } else {
@@ -1953,41 +2278,46 @@ async function saveConfigParam(key, val, loggedUserUsername) {
     }
   }
 
-  // Normalização e limpeza da chave motivosPerda / motivos_perda
   if (key === 'motivosPerda' || key === 'motivos_perda') {
     try {
-      await supabaseFetch("/config_settings?key=eq.motivos_perda", { method: "DELETE" });
+      await supabaseFetch("/config_settings?key=eq.motivos_perda", { method: "DELETE", headers: { "Prefer": "return=minimal" } });
     } catch (e) {}
     key = 'motivosPerda';
   }
 
-  // Normalização e limpeza da chave motivosOcorrencia / motivos_ocorrencia
   if (key === 'motivosOcorrencia' || key === 'motivos_ocorrencia') {
     try {
-      await supabaseFetch("/config_settings?key=eq.motivos_ocorrencia", { method: "DELETE" });
+      await supabaseFetch("/config_settings?key=eq.motivos_ocorrencia", { method: "DELETE", headers: { "Prefer": "return=minimal" } });
     } catch (e) {}
     key = 'motivosOcorrencia';
   }
 
   try {
     var queryKey = key;
+    var serializedVal = typeof val === 'string' ? val : JSON.stringify(val);
     var exists = await supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey));
+    var logVal = serializedVal.length > 150 ? serializedVal.substring(0, 150) + "... (dados compactados)" : serializedVal;
+
     if (exists.length > 0) {
-      await supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey), {
-        method: "PATCH",
-        payload: JSON.stringify({ value: val })
-      });
+      await Promise.all([
+        supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey), {
+          method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
+          payload: JSON.stringify({ value: serializedVal })
+        }),
+        logAction(loggedUserUsername, "Alterou parâmetro " + queryKey + " para " + logVal)
+      ]);
     } else {
-      await supabaseFetch("/config_settings", {
-        method: "POST",
-        payload: JSON.stringify({ key: queryKey, value: val })
-      });
+      await Promise.all([
+        supabaseFetch("/config_settings", {
+          method: "POST",
+          headers: { "Prefer": "return=minimal" },
+          payload: JSON.stringify({ key: queryKey, value: serializedVal })
+        }),
+        logAction(loggedUserUsername, "Alterou parâmetro " + queryKey + " para " + logVal)
+      ]);
     }
-    var logVal = typeof val === 'string' ? val : JSON.stringify(val);
-    if (logVal.length > 150) {
-      logVal = logVal.substring(0, 150) + "... (dados compactados)";
-    }
-    await logAction(loggedUserUsername, "Alterou parâmetro " + queryKey + " para " + logVal);
+    invalidateCatalogCache('config_settings');
     return { success: true };
   } catch (err) {
     return { success: false, error: err.toString() };
@@ -1999,28 +2329,235 @@ function normalizeCrm(val) {
   return val.toString().replace(/[^a-zA-Z0-9]/g, "").toLowerCase().trim();
 }
 
-async function addMedico(med, loggedUserUsername) {
-  if (!await validateUserSession(loggedUserUsername, 'venda') && !await validateUserSession(loggedUserUsername, 'visitaMedica')) {
+// ==========================================================
+// FASE 3: OPERAÇÕES ATÔMICAS DE LINHA ÚNICA (ZERO RACE CONDITION)
+// Tabelas relacionais dedicadas com fallback transparente para config_settings
+// ==========================================================
+
+async function upsertMedico(med, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'medicos', 'visitaMedica', 'configuracoes'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  if (!med || !med.nome || !med.crm) {
+    return { success: false, error: 'Nome e CRM do médico são obrigatórios.' };
+  }
+  try {
+    var medId = med.idMedico || med.id || ('MED-' + Date.now());
+    var row = {
+      id: medId,
+      crm: String(med.crm).trim(),
+      nome: String(med.nome).trim(),
+      representante: med.representante || '',
+      detalhes: Object.assign({}, med, { idMedico: medId })
+    };
+
+    var relCheck = await fetchRelationalTableSafe('medicos', '?crm=eq.' + encodeURIComponent(row.crm) + '&limit=5');
+    if (relCheck !== null) {
+      var existing = relCheck.find(function(x) { return normalizeCrm(x.crm) === normalizeCrm(row.crm); });
+      if (existing && !med.allowOverwrite && existing.id !== medId) {
+        row.id = existing.id;
+      }
+      await Promise.all([
+        supabaseFetch('/medicos?on_conflict=id', {
+          method: 'POST',
+          headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          payload: JSON.stringify(row)
+        }),
+        logAction(loggedUserUsername, "Gravou médico (atômico): " + row.nome + " CRM: " + row.crm)
+      ]);
+      return { success: true, record: formatMedicoFromRow(row) };
+    }
+
+    var medicosRaw = await supabaseFetch("/config_settings?key=eq.medicos");
+    var medicos = [];
+    if (medicosRaw.length > 0) {
+      try { medicos = JSON.parse(medicosRaw[0].value) || []; } catch (e) {}
+    }
+    var idx = medicos.findIndex(function(m) {
+      return (m.idMedico && m.idMedico === medId) || normalizeCrm(m.crm) === normalizeCrm(row.crm);
+    });
+    var formatted = formatMedicoFromRow(row);
+    if (idx !== -1) {
+      medicos[idx] = formatted;
+    } else {
+      medicos.push(formatted);
+    }
+    await saveConfigParam('medicos', JSON.stringify(medicos), loggedUserUsername);
+    return { success: true, record: formatted };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function deleteMedicoRecord(idOrCrm, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['configuracoes', 'visitaMedica'])) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
+    var relCheck = await fetchRelationalTableSafe('medicos', '?limit=1');
+    if (relCheck !== null) {
+      await Promise.all([
+        supabaseFetch('/medicos?or=(id.eq.' + encodeURIComponent(idOrCrm) + ',crm.eq.' + encodeURIComponent(idOrCrm) + ')', {
+          method: 'DELETE',
+          headers: { 'Prefer': 'return=minimal' }
+        }),
+        logAction(loggedUserUsername, "Removeu médico (atômico): " + idOrCrm)
+      ]);
+      return { success: true };
+    }
+
+    var medicosRaw = await supabaseFetch("/config_settings?key=eq.medicos");
+    var medicos = medicosRaw.length > 0 ? (JSON.parse(medicosRaw[0].value) || []) : [];
+    var filtered = medicos.filter(function(m) {
+      return m.idMedico !== idOrCrm && m.id !== idOrCrm && normalizeCrm(m.crm) !== normalizeCrm(idOrCrm);
+    });
+    await saveConfigParam('medicos', JSON.stringify(filtered), loggedUserUsername);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function bulkUpdateMedicosRepresentante(crmsList, representante, loggedUserUsername) {
+  if (!await validateUserSession(loggedUserUsername, 'configuracoes')) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  if (!Array.isArray(crmsList) || crmsList.length === 0) {
+    return { success: true };
+  }
+  try {
+    var repVal = representante || '';
+    var relCheck = await fetchRelationalTableSafe('medicos', '?limit=1');
+    if (relCheck !== null) {
+      var inList = crmsList.map(function(c) { return '"' + String(c).replace(/"/g, '') + '"'; }).join(',');
+      await Promise.all([
+        supabaseFetch('/medicos?crm=in.(' + encodeURIComponent(inList) + ')', {
+          method: 'PATCH',
+          headers: { 'Prefer': 'return=minimal' },
+          payload: JSON.stringify({ representante: repVal })
+        }),
+        logAction(loggedUserUsername, (repVal ? "Vinculou " : "Desvinculou ") + crmsList.length + " médicos (" + (repVal || 'Sem Rep') + ")")
+      ]);
+      return { success: true };
+    }
+
+    var medicosRaw = await supabaseFetch("/config_settings?key=eq.medicos");
+    var medicos = medicosRaw.length > 0 ? (JSON.parse(medicosRaw[0].value) || []) : [];
+    var crmSet = new Set(crmsList.map(normalizeCrm));
+    medicos.forEach(function(m) {
+      if (crmSet.has(normalizeCrm(m.crm))) {
+        m.representante = repVal;
+      }
+    });
+    await saveConfigParam('medicos', JSON.stringify(medicos), loggedUserUsername);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function addMedico(med, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'visitaMedica', 'configuracoes'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  try {
+    var relCheck = await fetchRelationalTableSafe('medicos', '?crm=eq.' + encodeURIComponent(med.crm || '') + '&limit=5');
+    if (relCheck !== null) {
+      if (relCheck.some(function(x) { return normalizeCrm(x.crm) === normalizeCrm(med.crm); })) {
+        return { success: false, error: 'Médico com este CRM já cadastrado.' };
+      }
+      return await upsertMedico(med, loggedUserUsername);
+    }
+
     var medicosRaw = await supabaseFetch("/config_settings?key=eq.medicos");
     var medicos = [];
     if (medicosRaw.length > 0) {
       try { medicos = JSON.parse(medicosRaw[0].value); } catch(e) {}
     }
-    
     for (var i = 0; i < medicos.length; i++) {
       if (normalizeCrm(medicos[i].crm) === normalizeCrm(med.crm)) {
         return { success: false, error: 'Médico com este CRM já cadastrado.' };
       }
     }
-    
     medicos.push(med);
-    
     await saveConfigParam('medicos', JSON.stringify(medicos), loggedUserUsername);
-    
-    await logAction(loggedUserUsername, "Cadastrou médico: " + med.nome + " CRM: " + med.crm);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function upsertClinica(clin, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'visitaMedica', 'configuracoes'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  if (!clin || !clin.nome) {
+    return { success: false, error: 'Nome da clínica é obrigatório.' };
+  }
+  try {
+    var clinId = clin.id || ('CLIN-' + Date.now());
+    var row = {
+      id: clinId,
+      nome: String(clin.nome).trim(),
+      cidade: clin.cidade || '',
+      representante: clin.representante || '',
+      detalhes: Object.assign({}, clin, { id: clinId })
+    };
+
+    var relCheck = await fetchRelationalTableSafe('clinicas', '?limit=1');
+    if (relCheck !== null) {
+      await Promise.all([
+        supabaseFetch('/clinicas?on_conflict=id', {
+          method: 'POST',
+          headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          payload: JSON.stringify(row)
+        }),
+        logAction(loggedUserUsername, "Gravou clínica (atômico): " + row.nome)
+      ]);
+      return { success: true, record: formatClinicaFromRow(row) };
+    }
+
+    var clinicasRaw = await supabaseFetch("/config_settings?key=eq.clinicas");
+    var clinicas = clinicasRaw.length > 0 ? (JSON.parse(clinicasRaw[0].value) || []) : [];
+    var idx = clinicas.findIndex(function(c) {
+      return (c.id && c.id === clinId) || (c.nome && c.nome.toLowerCase().trim() === row.nome.toLowerCase());
+    });
+    var formatted = formatClinicaFromRow(row);
+    if (idx !== -1) {
+      clinicas[idx] = formatted;
+    } else {
+      clinicas.push(formatted);
+    }
+    await saveConfigParam('clinicas', JSON.stringify(clinicas), loggedUserUsername);
+    return { success: true, record: formatted };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function deleteClinicaRecord(idOrNome, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['configuracoes', 'visitaMedica'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  try {
+    var relCheck = await fetchRelationalTableSafe('clinicas', '?limit=1');
+    if (relCheck !== null) {
+      await Promise.all([
+        supabaseFetch('/clinicas?or=(id.eq.' + encodeURIComponent(idOrNome) + ',nome.eq.' + encodeURIComponent(idOrNome) + ')', {
+          method: 'DELETE',
+          headers: { 'Prefer': 'return=minimal' }
+        }),
+        logAction(loggedUserUsername, "Removeu clínica (atômico): " + idOrNome)
+      ]);
+      return { success: true };
+    }
+
+    var clinicasRaw = await supabaseFetch("/config_settings?key=eq.clinicas");
+    var clinicas = clinicasRaw.length > 0 ? (JSON.parse(clinicasRaw[0].value) || []) : [];
+    var filtered = clinicas.filter(function(c) {
+      return c.id !== idOrNome && (c.nome || '').toLowerCase().trim() !== String(idOrNome).toLowerCase().trim();
+    });
+    await saveConfigParam('clinicas', JSON.stringify(filtered), loggedUserUsername);
     return { success: true };
   } catch (err) {
     return { success: false, error: err.toString() };
@@ -2028,28 +2565,225 @@ async function addMedico(med, loggedUserUsername) {
 }
 
 async function addClinica(clin, loggedUserUsername) {
-  if (!await validateUserSession(loggedUserUsername, 'venda') && !await validateUserSession(loggedUserUsername, 'visitaMedica')) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'visitaMedica', 'configuracoes'])) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
+    var relCheck = await fetchRelationalTableSafe('clinicas', '?nome=ilike.' + encodeURIComponent((clin.nome || '').trim()) + '&limit=5');
+    if (relCheck !== null) {
+      if (relCheck.some(function(c) { return (c.nome || '').toLowerCase().trim() === (clin.nome || '').toLowerCase().trim(); })) {
+        return { success: false, error: 'Clínica com este nome já cadastrada.' };
+      }
+      return await upsertClinica(clin, loggedUserUsername);
+    }
+
     var clinicasRaw = await supabaseFetch("/config_settings?key=eq.clinicas");
     var clinicas = [];
     if (clinicasRaw.length > 0) {
       try { clinicas = JSON.parse(clinicasRaw[0].value); } catch(e) {}
     }
-    
     for (var i = 0; i < clinicas.length; i++) {
       if (clinicas[i].nome.toLowerCase().trim() === clin.nome.toLowerCase().trim()) {
         return { success: false, error: 'Clínica com este nome já cadastrada.' };
       }
     }
-    
     clinicas.push(clin);
-    
     await saveConfigParam('clinicas', JSON.stringify(clinicas), loggedUserUsername);
-    
-    await logAction(loggedUserUsername, "Cadastrou clínica: " + clin.nome);
     return { success: true };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function upsertOrcamento(orc, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'orcamentos', 'configuracoes'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  if (!orc) {
+    return { success: false, error: 'Dados do orçamento não informados.' };
+  }
+  try {
+    var orcId = orc.id || crypto.randomUUID();
+    var row = {
+      id: orcId,
+      data: orc.data || new Date().toISOString().split('T')[0],
+      loja: orc.loja || '',
+      vendedor: orc.vendedor || '',
+      valor_estimado: Number(orc.valorEstimado) || 0,
+      cliente_nome: orc.clienteNome || '',
+      cliente_whatsapp: orc.clienteWhatsApp || '',
+      cliente_email: orc.clienteEmail || '',
+      motivo_perda: orc.motivoPerda || '',
+      detalhes: orc.detalhes || '',
+      extra: Object.assign({}, orc, { id: orcId })
+    };
+
+    var relCheck = await fetchRelationalTableSafe('orcamentos', '?limit=1');
+    if (relCheck !== null) {
+      await Promise.all([
+        supabaseFetch('/orcamentos?on_conflict=id', {
+          method: 'POST',
+          headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          payload: JSON.stringify(row)
+        }),
+        logAction(loggedUserUsername, "Registrou orçamento perdido (atômico): " + row.cliente_nome)
+      ]);
+      return { success: true, record: formatOrcamentoFromRow(row) };
+    }
+
+    return await addConfigRecord('orcamentos', Object.assign({}, orc, { id: orcId }), loggedUserUsername);
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function deleteOrcamentoRecord(idOrUniqueStr, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'orcamentos', 'configuracoes'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  try {
+    var relCheck = await fetchRelationalTableSafe('orcamentos', '?limit=1');
+    if (relCheck !== null) {
+      if (idOrUniqueStr && idOrUniqueStr.indexOf('|') === -1) {
+        await Promise.all([
+          supabaseFetch('/orcamentos?id=eq.' + encodeURIComponent(idOrUniqueStr), {
+            method: 'DELETE',
+            headers: { 'Prefer': 'return=minimal' }
+          }),
+          logAction(loggedUserUsername, "Removeu orçamento ID: " + idOrUniqueStr)
+        ]);
+        return { success: true };
+      }
+      var parts = String(idOrUniqueStr || '').split('|');
+      var q = '/orcamentos?data=eq.' + encodeURIComponent(parts[0] || '') +
+              '&loja=eq.' + encodeURIComponent(parts[1] || '') +
+              '&cliente_nome=eq.' + encodeURIComponent(parts[3] || '');
+      await Promise.all([
+        supabaseFetch(q, { method: 'DELETE', headers: { 'Prefer': 'return=minimal' } }),
+        logAction(loggedUserUsername, "Removeu orçamento: " + (parts[3] || idOrUniqueStr))
+      ]);
+      return { success: true };
+    }
+
+    var raw = await supabaseFetch("/config_settings?key=eq.orcamentos");
+    var list = raw.length > 0 ? (JSON.parse(raw[0].value) || []) : [];
+    var partsFb = String(idOrUniqueStr || '').split('|');
+    var updated = list.filter(function(o) {
+      if (o.id && o.id === idOrUniqueStr) return false;
+      if (partsFb.length >= 5) {
+        var matches = o.data === partsFb[0] &&
+                      o.loja === partsFb[1] &&
+                      o.vendedor === partsFb[2] &&
+                      o.clienteNome === partsFb[3] &&
+                      Number(o.valorEstimado).toFixed(2) === Number(partsFb[4]).toFixed(2);
+        return !matches;
+      }
+      return true;
+    });
+    await saveConfigParam('orcamentos', JSON.stringify(updated), loggedUserUsername);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function upsertAssistencia(assist, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  if (!assist) {
+    return { success: false, error: 'Dados da assistência não informados.' };
+  }
+  try {
+    var astId = assist.id || crypto.randomUUID();
+    var row = {
+      id: astId,
+      os_loja: String(assist.osLoja || ''),
+      loja: assist.loja || '',
+      cliente_nome: assist.clienteNome || '',
+      cliente_telefone: assist.clienteTelefone || '',
+      cliente_email: assist.clienteEmail || '',
+      lente_original: assist.lenteOriginal || '',
+      motivo_queixa: assist.motivoQueixa || '',
+      detalhes_queixa: assist.detalhesQueixa || '',
+      tecnico_nome: assist.tecnicoNome || '',
+      tecnico_whatsapp: assist.tecnicoWhatsApp || '',
+      tecnico_calendly: assist.tecnicoCalendly || '',
+      data_agendamento: assist.dataAgendamento || '',
+      status: assist.status || 'PENDENTE_ACEITE',
+      detalhes: Object.assign({}, assist, { id: astId })
+    };
+
+    var relCheck = await fetchRelationalTableSafe('assistencias', '?limit=1');
+    if (relCheck !== null) {
+      await Promise.all([
+        supabaseFetch('/assistencias?on_conflict=id', {
+          method: 'POST',
+          headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+          payload: JSON.stringify(row)
+        }),
+        logAction(loggedUserUsername, "Registrou assistência técnica OS " + row.os_loja + " (atômico)")
+      ]);
+      return { success: true, record: formatAssistenciaFromRow(row) };
+    }
+
+    return await addConfigRecord('assistencias', Object.assign({}, assist, { id: astId }), loggedUserUsername);
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function updateAssistenciaStatus(assistId, newStatus, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  try {
+    var relCheck = await fetchRelationalTableSafe('assistencias', '?limit=1');
+    if (relCheck !== null) {
+      await Promise.all([
+        supabaseFetch('/assistencias?id=eq.' + encodeURIComponent(assistId), {
+          method: 'PATCH',
+          headers: { 'Prefer': 'return=minimal' },
+          payload: JSON.stringify({ status: newStatus })
+        }),
+        logAction(loggedUserUsername, "Atualizou status da assistência " + assistId + " para " + newStatus)
+      ]);
+      return { success: true };
+    }
+
+    var raw = await supabaseFetch("/config_settings?key=eq.assistencias");
+    var list = raw.length > 0 ? (JSON.parse(raw[0].value) || []) : [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === assistId) {
+        list[i].status = newStatus;
+        break;
+      }
+    }
+    await saveConfigParam('assistencias', JSON.stringify(list), loggedUserUsername);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}
+
+async function deleteAssistenciaRecord(assistId, loggedUserUsername) {
+  if (!await validateUserAnyPermission(loggedUserUsername, ['venda', 'conferencia', 'configuracoes', 'visitaMedica', 'assistencia'])) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  try {
+    var relCheck = await fetchRelationalTableSafe('assistencias', '?limit=1');
+    if (relCheck !== null) {
+      await Promise.all([
+        supabaseFetch('/assistencias?id=eq.' + encodeURIComponent(assistId), {
+          method: 'DELETE',
+          headers: { 'Prefer': 'return=minimal' }
+        }),
+        logAction(loggedUserUsername, "Excluiu assistência técnica ID: " + assistId)
+      ]);
+      return { success: true };
+    }
+
+    return await deleteConfigRecord('assistencias', assistId, loggedUserUsername);
   } catch (err) {
     return { success: false, error: err.toString() };
   }
@@ -2085,33 +2819,15 @@ async function addVisitaMedica(visitaData, loggedUserUsername) {
     };
 
     await Promise.all([
-      supabaseFetch("/visitas_medicas", {
+      supabaseFetch("/visitas_medicas?on_conflict=id", {
         method: "POST",
+        headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
         payload: JSON.stringify(row)
       }),
       logAction(loggedUserUsername, "Registrou visita médica: " + row.medico_nome + " (" + row.representante + ")")
     ]);
 
-    var isClin = row.medico_crm === 'CLINICA' || 
-      (row.medico_nome && (row.medico_nome.toLowerCase().includes('clínica') || row.medico_nome.toLowerCase().includes('clinica')));
-    var formattedRecord = {
-      id: row.id,
-      data: row.data,
-      hora: row.hora,
-      representante: row.representante,
-      medicoNome: row.medico_nome,
-      medicoCrm: row.medico_crm,
-      medico_nome: row.medico_nome,
-      medico_crm: row.medico_crm,
-      tipo: isClin ? 'Clinica' : 'Medico',
-      clinicaNome: isClin ? row.medico_nome : '',
-      assunto: row.assunto,
-      status: row.status,
-      relato: row.relato,
-      lat: row.lat,
-      lng: row.lng
-    };
-
+    var formattedRecord = formatVisitaFromRow(row);
     return { success: true, data: formattedRecord, record: formattedRecord };
   } catch (err) {
     console.error("Erro ao registrar visita médica em public.visitas_medicas:", err);
@@ -2135,7 +2851,8 @@ async function deleteVisitaMedica(visitaId, loggedUserUsername) {
   try {
     await Promise.all([
       supabaseFetch("/visitas_medicas?id=eq." + encodeURIComponent(visitaId), {
-        method: "DELETE"
+        method: "DELETE",
+        headers: { "Prefer": "return=minimal" }
       }),
       logAction(loggedUserUsername, "Removeu registro de visita médica ID: " + visitaId)
     ]);
@@ -2181,6 +2898,7 @@ async function addConfigRecord(key, record, loggedUserUsername) {
       await Promise.all([
         supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey), {
           method: "PATCH",
+          headers: { "Prefer": "return=minimal" },
           payload: JSON.stringify({ value: val })
         }),
         logAction(loggedUserUsername, "Adicionou registro no parâmetro " + queryKey)
@@ -2189,12 +2907,13 @@ async function addConfigRecord(key, record, loggedUserUsername) {
       await Promise.all([
         supabaseFetch("/config_settings", {
           method: "POST",
+          headers: { "Prefer": "return=minimal" },
           payload: JSON.stringify({ key: queryKey, value: val })
         }),
         logAction(loggedUserUsername, "Adicionou registro no parâmetro " + queryKey)
       ]);
     }
-
+    invalidateCatalogCache('config_settings');
     return { success: true, data: currentArray };
   } catch (err) {
     return { success: false, error: err.toString() };
@@ -2241,12 +2960,15 @@ async function deleteConfigRecord(key, recordId, loggedUserUsername) {
     }
 
     var val = JSON.stringify(currentArray);
-    await supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey), {
-      method: "PATCH",
-      payload: JSON.stringify({ value: val })
-    });
-
-    await logAction(loggedUserUsername, "Removeu registro no parâmetro " + queryKey + " ID: " + recordId);
+    await Promise.all([
+      supabaseFetch("/config_settings?key=eq." + encodeURIComponent(queryKey), {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ value: val })
+      }),
+      logAction(loggedUserUsername, "Removeu registro no parâmetro " + queryKey + " ID: " + recordId)
+    ]);
+    invalidateCatalogCache('config_settings');
     return { success: true, data: currentArray };
   } catch (err) {
     return { success: false, error: err.toString() };
@@ -2600,11 +3322,15 @@ async function editLoja(oldName, newName, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/lojas?nome=eq." + encodeURIComponent(oldName), {
-      method: "PATCH",
-      payload: JSON.stringify({ nome: newName })
-    });
-    await logAction(loggedUserUsername, "Editou loja: " + oldName + " para: " + newName);
+    await Promise.all([
+      supabaseFetch("/lojas?nome=eq." + encodeURIComponent(oldName), {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: newName })
+      }),
+      logAction(loggedUserUsername, "Editou loja: " + oldName + " para: " + newName)
+    ]);
+    invalidateCatalogCache('lojas');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -2616,11 +3342,15 @@ async function editLab(oldName, newName, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/laboratorios?nome=eq." + encodeURIComponent(oldName), {
-      method: "PATCH",
-      payload: JSON.stringify({ nome: newName })
-    });
-    await logAction(loggedUserUsername, "Editou laboratório: " + oldName + " para: " + newName);
+    await Promise.all([
+      supabaseFetch("/laboratorios?nome=eq." + encodeURIComponent(oldName), {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({ nome: newName })
+      }),
+      logAction(loggedUserUsername, "Editou laboratório: " + oldName + " para: " + newName)
+    ]);
+    invalidateCatalogCache('laboratorios');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -2632,16 +3362,20 @@ async function editProduto(oldNome, record, loggedUserUsername) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    await supabaseFetch("/produtos?nome=eq." + encodeURIComponent(oldNome), {
-      method: "PATCH",
-      payload: JSON.stringify({
-        nome: record.nome,
-        preco: Number(record.preco) || 0,
-        laboratorio: record.laboratorio,
-        tipo: record.tipo
-      })
-    });
-    await logAction(loggedUserUsername, "Editou produto: " + oldNome + " para: " + record.nome);
+    await Promise.all([
+      supabaseFetch("/produtos?nome=eq." + encodeURIComponent(oldNome), {
+        method: "PATCH",
+        headers: { "Prefer": "return=minimal" },
+        payload: JSON.stringify({
+          nome: record.nome,
+          preco: Number(record.preco) || 0,
+          laboratorio: record.laboratorio,
+          tipo: record.tipo
+        })
+      }),
+      logAction(loggedUserUsername, "Editou produto: " + oldNome + " para: " + record.nome)
+    ]);
+    invalidateCatalogCache('produtos');
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -3474,7 +4208,7 @@ async function processarReconciliacao3Way(params, loggedUser) {
 // ==========================================
 
 const backendFunctions = {
-  getAppData, authenticateUser, authenticateByPin, validateUserSession,
+  getAppData, getHistoricalVisitas, authenticateUser, authenticateByPin, validateUserSession,
   saveVenda, addVenda, deleteVenda, deleteVendas, deleteVendasBulk,
   saveLancamento, addConferencia, deleteLancamento, deleteConferencia, deleteLancamentosBulk, deleteConferenciaGroup,
   addLoja, deleteLoja, renameLoja, editLoja,
@@ -3484,7 +4218,10 @@ const backendFunctions = {
   saveRepresentanteWithPassword, getRepresentanteAuthInfo,
   addContatoResumo, deleteContatoResumo,
   addProduto, deleteProduto, editProduto,
-  addMedico, addClinica,
+  addMedico, upsertMedico, deleteMedicoRecord, bulkUpdateMedicosRepresentante,
+  addClinica, upsertClinica, deleteClinicaRecord,
+  upsertOrcamento, deleteOrcamentoRecord,
+  upsertAssistencia, updateAssistenciaStatus, deleteAssistenciaRecord,
   saveUser, deleteUser, getUsersList, changeOwnPassword,
   saveConfigParam, saveSessionTimeoutSetting, saveLogoUrl, deleteLogoUrl,
   generateSalePDF, generateDailySummaryPDF, importBulkCadastros, generateTableReportPDF,
@@ -3601,3 +4338,5 @@ module.exports.supabaseFetch = supabaseFetch;
 module.exports.userSessionCache = userSessionCache;
 module.exports.invalidateUserCache = invalidateUserCache;
 module.exports.validateUserAnyPermission = validateUserAnyPermission;
+module.exports.staticCatalogCache = staticCatalogCache;
+module.exports.invalidateCatalogCache = invalidateCatalogCache;
