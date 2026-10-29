@@ -82,7 +82,13 @@
           if (!res.ok) throw new Error("Erro de resposta HTTP: " + res.status);
           return res.json();
         })
-        .then(onSuccess)
+        .then(function(data) {
+          try {
+            if (onSuccess) onSuccess(data);
+          } catch (callbackErr) {
+            console.error("Erro interno no cliente (onSuccess - " + prop + "):", callbackErr);
+          }
+        })
         .catch(function(err) {
           console.warn("Falha na chamada API (" + prop + "). Retentativas restantes: " + retries, err);
           if (retries > 0) {
@@ -150,10 +156,20 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-  <!-- Chart.js Datalabels Plugin -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <!-- Chart.js (Local com Fallback CDN resiliente) -->
+  <script src="./vendor/chart.min.js"></script>
+  <script>
+    if (typeof Chart === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"><\/script>');
+    }
+  </script>
+  <!-- Chart.js Datalabels Plugin (Local com Fallback CDN resiliente) -->
+  <script src="./vendor/chartjs-plugin-datalabels.min.js"></script>
+  <script>
+    if (typeof ChartDataLabels === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"><\/script>');
+    }
+  </script>
   <!-- SheetJS for Excel Upload parsing -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <!-- Tesseract.js for prescription OCR -->
@@ -3241,23 +3257,59 @@
         <div id="config-subtab-representantes" class="config-section" style="display:none;">
           <div class="grid-2">
             <div>
-              <div class="form-group">
-                <label id="newRepresentanteLabel" for="newRepresentanteName">Cadastrar Novo Representante Médico</label>
+              <div class="card" style="padding:16px; background:var(--bg-secondary); border:1px solid var(--border-color); border-radius:8px; margin-bottom: 15px;">
+                <h4 id="newRepresentanteLabel" style="margin-top:0; margin-bottom:14px; font-size:14px; font-weight:600; color:var(--text-main); display:flex; align-items:center; gap:8px;">
+                  <i class="fa-solid fa-user-tie" style="color:var(--primary);"></i> <span>Cadastrar Novo Representante Médico</span>
+                </h4>
                 <input type="hidden" id="editRepresentanteOldName" value="">
-                <div class="input-group-btn">
-                  <input type="text" id="newRepresentanteName" placeholder="Nome do Representante">
-                  <button id="btnSaveRepresentante" class="btn btn-success" onclick="handleAddRepresentante()"><i id="iconSaveRepresentante" class="fa-solid fa-plus"></i></button>
-                  <button id="btnCancelEditRepresentante" class="btn btn-secondary" style="display:none;" onclick="cancelEditRepresentante()"><i class="fa-solid fa-xmark"></i></button>
+
+                <div class="form-group" style="margin-bottom:12px;">
+                  <label for="newRepresentanteName" style="font-weight:600;">Nome do Representante</label>
+                  <input type="text" id="newRepresentanteName" placeholder="Ex: Angelo ou Silvia" style="width:100%; padding:8px 10px; font-size:12px;">
+                </div>
+
+                <!-- Seção Gerenciamento de Senha de Acesso -->
+                <div id="groupRepresentanteSenha" style="margin-bottom:14px; padding:12px; background:rgba(0,0,0,0.25); border:1px solid var(--border-color); border-radius:6px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <label for="newRepresentanteSenha" style="font-weight:600; margin:0; display:flex; align-items:center; gap:6px;">
+                      <i class="fa-solid fa-key" style="color:var(--warning);"></i> <span>Senha de Acesso ao Sistema</span>
+                    </label>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="generateRandomRepPassword()" style="font-size:10px; padding:2px 8px;" title="Gerar senha aleatória">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i> Gerar Senha
+                    </button>
+                  </div>
+                  
+                  <div style="position:relative; display:flex; align-items:center;">
+                    <input type="password" id="newRepresentanteSenha" placeholder="Digite uma nova senha para resetar..." style="width:100%; padding:8px 36px 8px 10px; font-size:12px; font-family:inherit;">
+                    <button type="button" onclick="toggleRepPasswordVisibility()" style="position:absolute; right:8px; background:none; border:none; color:var(--text-muted); cursor:pointer; padding:4px;" title="Mostrar/Ocultar Senha">
+                      <i class="fa-solid fa-eye" id="iconToggleRepPass"></i>
+                    </button>
+                  </div>
+                  
+                  <div id="repAuthStatusBadge" style="margin-top:6px; font-size:11px; color:var(--text-muted);">
+                    Defina uma senha para que este representante consiga autenticar no sistema.
+                  </div>
+                </div>
+
+                <div style="display:flex; gap:8px;">
+                  <button id="btnSaveRepresentante" class="btn btn-success" onclick="handleAddRepresentante()" style="flex:1; padding:8px 14px; font-size:12px; font-weight:600; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    <i id="iconSaveRepresentante" class="fa-solid fa-plus"></i> <span id="textSaveRepresentante">Adicionar Representante</span>
+                  </button>
+                  <button id="btnCancelEditRepresentante" class="btn btn-secondary" style="display:none; padding:8px 14px; font-size:12px;" onclick="cancelEditRepresentante()">
+                    <i class="fa-solid fa-xmark"></i> Cancelar
+                  </button>
                 </div>
               </div>
             </div>
+
             <div>
-              <div class="table-container" style="max-height: 300px;">
+              <div class="table-container" style="max-height: 400px;">
                 <table>
                   <thead>
                     <tr>
                       <th>Representante</th>
-                      <th class="text-center" style="width: 80px;">Ação</th>
+                      <th>Status Login</th>
+                      <th class="text-center" style="width: 100px;">Ação</th>
                     </tr>
                   </thead>
                   <tbody id="representantesTableBody"></tbody>
@@ -5992,22 +6044,31 @@
         subTabUsr.style.display = (user.username === 'admin') ? "inline-block" : "none";
       }
 
-      // Escolher aba ativa disponível
-      var tabs = ['venda', 'conferencia', 'resumoVendas', 'garantias', 'devolucoes', 'assistencia', 'medicos', 'visitaMedica', 'lead', 'controleLead', 'auditoria', 'configuracoes', 'logs'];
-      for (var i = 0; i < tabs.length; i++) {
-        var t = tabs[i];
-        var tabPerm = p[t];
-        if (t === 'orcamentos') tabPerm = orcamentosVal;
-        else if (t === 'garantias') tabPerm = garantiasVal;
-        else if (t === 'devolucoes') tabPerm = devolucoesVal;
-        else if (t === 'assistencia') tabPerm = assistenciaVal;
-        else if (t === 'visitaMedica') tabPerm = visitaMedicaVal;
-        else if (t === 'lead') tabPerm = leadKanbanVal;
-        else if (t === 'controleLead') tabPerm = leadControleVal;
-        
-        if (tabPerm === 'ATIVO') {
-          switchTab(t);
-          break;
+      // Escolher aba ativa disponível (priorizar Visita Médica para representantes de campo)
+      var defaultTab = null;
+      if (visitaMedicaVal === 'ATIVO' && !isUserAdmin && p.venda !== 'ATIVO' && p.conferencia !== 'ATIVO') {
+        defaultTab = 'visitaMedica';
+      }
+
+      if (defaultTab) {
+        switchTab(defaultTab);
+      } else {
+        var tabs = ['venda', 'conferencia', 'resumoVendas', 'garantias', 'devolucoes', 'assistencia', 'visitaMedica', 'medicos', 'lead', 'controleLead', 'auditoria', 'configuracoes', 'logs'];
+        for (var i = 0; i < tabs.length; i++) {
+          var t = tabs[i];
+          var tabPerm = p[t];
+          if (t === 'orcamentos') tabPerm = orcamentosVal;
+          else if (t === 'garantias') tabPerm = garantiasVal;
+          else if (t === 'devolucoes') tabPerm = devolucoesVal;
+          else if (t === 'assistencia') tabPerm = assistenciaVal;
+          else if (t === 'visitaMedica') tabPerm = visitaMedicaVal;
+          else if (t === 'lead') tabPerm = leadKanbanVal;
+          else if (t === 'controleLead') tabPerm = leadControleVal;
+          
+          if (tabPerm === 'ATIVO') {
+            switchTab(t);
+            break;
+          }
         }
       }
 
@@ -11300,86 +11361,88 @@
         datasetResidual.push(residualLoja[lj]);
       }
 
-      if (chartFaturamentoInst) chartFaturamentoInst.destroy();
-      
-      var ctxLoja = document.getElementById("chartVendaFaturamentoLoja").getContext("2d");
-      chartFaturamentoInst = new Chart(ctxLoja, {
-        type: 'bar',
-        data: {
-          labels: lojasLabels,
-          datasets: [
-            {
-              label: 'Total Recebido',
-              data: datasetCaixa,
-              backgroundColor: '#10B981',
-              borderRadius: 4
-            },
-            {
-              label: 'Saldo Residual',
-              data: datasetResidual,
-              backgroundColor: '#EF4444',
-              borderRadius: 4
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'top', labels: { color: '#F8FAFC' } },
-            datalabels: {
-              color: '#FFFFFF',
-              anchor: 'end',
-              align: 'start',
-              offset: 4,
-              font: { weight: 'bold', size: 10 },
-              formatter: function(val) {
-                return val > 0 ? 'R$' + Math.round(val) : '';
+      if (typeof Chart !== 'undefined') {
+        if (chartFaturamentoInst) chartFaturamentoInst.destroy();
+        
+        var ctxLoja = document.getElementById("chartVendaFaturamentoLoja").getContext("2d");
+        chartFaturamentoInst = new Chart(ctxLoja, {
+          type: 'bar',
+          data: {
+            labels: lojasLabels,
+            datasets: [
+              {
+                label: 'Total Recebido',
+                data: datasetCaixa,
+                backgroundColor: '#10B981',
+                borderRadius: 4
+              },
+              {
+                label: 'Saldo Residual',
+                data: datasetResidual,
+                backgroundColor: '#EF4444',
+                borderRadius: 4
               }
-            }
+            ]
           },
-          scales: {
-            x: { stacked: true, grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
-            y: { stacked: true, grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } }
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top', labels: { color: '#F8FAFC' } },
+              datalabels: {
+                color: '#FFFFFF',
+                anchor: 'end',
+                align: 'start',
+                offset: 4,
+                font: { weight: 'bold', size: 10 },
+                formatter: function(val) {
+                  return val > 0 ? 'R$' + Math.round(val) : '';
+                }
+              }
+            },
+            scales: {
+              x: { stacked: true, grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
+              y: { stacked: true, grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } }
+            }
           }
+        });
+
+        var pagLabels = Object.keys(pagamentosCount);
+        var pagValues = [];
+        for (var i = 0; i < pagLabels.length; i++) {
+          pagValues.push(pagamentosCount[pagLabels[i]]);
         }
-      });
 
-      var pagLabels = Object.keys(pagamentosCount);
-      var pagValues = [];
-      for (var i = 0; i < pagLabels.length; i++) {
-        pagValues.push(pagamentosCount[pagLabels[i]]);
-      }
+        if (chartMeioPagamentoInst) chartMeioPagamentoInst.destroy();
 
-      if (chartMeioPagamentoInst) chartMeioPagamentoInst.destroy();
-
-      var ctxPag = document.getElementById("chartVendaMeioPagamento").getContext("2d");
-      chartMeioPagamentoInst = new Chart(ctxPag, {
-        type: 'doughnut',
-        data: {
-          labels: pagLabels,
-          datasets: [{
-            data: pagValues,
-            backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'],
-            borderWidth: 1,
-            borderColor: '#1E293B'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'right', labels: { color: '#F8FAFC', font: { size: 10 } } },
-            datalabels: {
-              color: '#FFFFFF',
-              font: { weight: 'bold', size: 10 },
-              formatter: function(val) {
-                return val > 0 ? 'R$' + Math.round(val) : '';
+        var ctxPag = document.getElementById("chartVendaMeioPagamento").getContext("2d");
+        chartMeioPagamentoInst = new Chart(ctxPag, {
+          type: 'doughnut',
+          data: {
+            labels: pagLabels,
+            datasets: [{
+              data: pagValues,
+              backgroundColor: ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'],
+              borderWidth: 1,
+              borderColor: '#1E293B'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'right', labels: { color: '#F8FAFC', font: { size: 10 } } },
+              datalabels: {
+                color: '#FFFFFF',
+                font: { weight: 'bold', size: 10 },
+                formatter: function(val) {
+                  return val > 0 ? 'R$' + Math.round(val) : '';
+                }
               }
             }
           }
-        }
-      });
+        });
+      }
     }
 
     // Renderiza o Dashboard Resumo Lab (Oficial vs Adaptado)
@@ -11613,101 +11676,103 @@
         datasetAdaptado.push(adaptadoLoja[lj] || 0);
       }
 
-      if (chartResumoLabLojaInst) chartResumoLabLojaInst.destroy();
-      
-      var ctxLoja = document.getElementById("chartLabLoja").getContext("2d");
-      chartResumoLabLojaInst = new Chart(ctxLoja, {
-        type: 'bar',
-        data: {
-          labels: lojasLabels,
-          datasets: [
-            {
-              label: 'Pedido Oficial',
-              data: datasetOficial,
-              backgroundColor: '#3B82F6',
-              borderRadius: 4
-            },
-            {
-              label: 'Pedido Adaptado',
-              data: datasetAdaptado,
-              backgroundColor: '#10B981',
-              borderRadius: 4
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'top', labels: { color: '#F8FAFC' } },
-            datalabels: {
-              color: '#FFFFFF',
-              anchor: 'end',
-              align: 'start',
-              offset: 4,
-              font: { weight: 'bold', size: 10 },
-              formatter: function(val) {
-                return val > 0 ? 'R$' + Math.round(val) : '';
+      if (typeof Chart !== 'undefined') {
+        if (chartResumoLabLojaInst) chartResumoLabLojaInst.destroy();
+        
+        var ctxLoja = document.getElementById("chartLabLoja").getContext("2d");
+        chartResumoLabLojaInst = new Chart(ctxLoja, {
+          type: 'bar',
+          data: {
+            labels: lojasLabels,
+            datasets: [
+              {
+                label: 'Pedido Oficial',
+                data: datasetOficial,
+                backgroundColor: '#3B82F6',
+                borderRadius: 4
+              },
+              {
+                label: 'Pedido Adaptado',
+                data: datasetAdaptado,
+                backgroundColor: '#10B981',
+                borderRadius: 4
               }
-            }
+            ]
           },
-          scales: {
-            x: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
-            y: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } }
-          }
-        }
-      });
-
-      var labLabels = Object.keys(adaptadoLab);
-      var labValues = [];
-      var totalLabValues = 0;
-      for (var i = 0; i < labLabels.length; i++) {
-        var val = adaptadoLab[labLabels[i]];
-        labValues.push(val);
-        totalLabValues += val;
-      }
-
-      if (chartResumoLabLabInst) chartResumoLabLabInst.destroy();
-
-      var ctxLab = document.getElementById("chartLabLab").getContext("2d");
-      chartResumoLabLabInst = new Chart(ctxLab, {
-        type: 'doughnut',
-        data: {
-          labels: labLabels,
-          datasets: [{
-            data: labValues,
-            backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'],
-            borderWidth: 1,
-            borderColor: '#1E293B'
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'right', labels: { color: '#F8FAFC', font: { size: 10 } } },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  var label = context.label || '';
-                  var val = context.raw || 0;
-                  var pct = totalLabValues > 0 ? ((val / totalLabValues) * 100).toFixed(1) + '%' : '0%';
-                  return label + ': R$ ' + val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + pct + ')';
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'top', labels: { color: '#F8FAFC' } },
+              datalabels: {
+                color: '#FFFFFF',
+                anchor: 'end',
+                align: 'start',
+                offset: 4,
+                font: { weight: 'bold', size: 10 },
+                formatter: function(val) {
+                  return val > 0 ? 'R$' + Math.round(val) : '';
                 }
               }
             },
-            datalabels: {
-              color: '#FFFFFF',
-              font: { weight: 'bold', size: 10 },
-              formatter: function(val) {
-                if (totalLabValues <= 0) return '';
-                var pct = (val / totalLabValues) * 100;
-                return pct > 1 ? pct.toFixed(1) + '%' : '';
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
+              y: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } }
+            }
+          }
+        });
+
+        var labLabels = Object.keys(adaptadoLab);
+        var labValues = [];
+        var totalLabValues = 0;
+        for (var i = 0; i < labLabels.length; i++) {
+          var val = adaptadoLab[labLabels[i]];
+          labValues.push(val);
+          totalLabValues += val;
+        }
+
+        if (chartResumoLabLabInst) chartResumoLabLabInst.destroy();
+
+        var ctxLab = document.getElementById("chartLabLab").getContext("2d");
+        chartResumoLabLabInst = new Chart(ctxLab, {
+          type: 'doughnut',
+          data: {
+            labels: labLabels,
+            datasets: [{
+              data: labValues,
+              backgroundColor: ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'],
+              borderWidth: 1,
+              borderColor: '#1E293B'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { position: 'right', labels: { color: '#F8FAFC', font: { size: 10 } } },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    var label = context.label || '';
+                    var val = context.raw || 0;
+                    var pct = totalLabValues > 0 ? ((val / totalLabValues) * 100).toFixed(1) + '%' : '0%';
+                    return label + ': R$ ' + val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + pct + ')';
+                  }
+                }
+              },
+              datalabels: {
+                color: '#FFFFFF',
+                font: { weight: 'bold', size: 10 },
+                formatter: function(val) {
+                  if (totalLabValues <= 0) return '';
+                  var pct = (val / totalLabValues) * 100;
+                  return pct > 1 ? pct.toFixed(1) + '%' : '';
+                }
               }
             }
           }
-        }
-      });
+        });
+      }
     }
 
     // Modal de Impressão e Preview de Recibo
@@ -14302,92 +14367,94 @@
       }
 
       // Render Charts
-      var ctxMed = document.getElementById("chartTopMedicos");
-      if (ctxMed) {
-        if (chartTopMedicosInst) chartTopMedicosInst.destroy();
-        
-        var topMeds = doctorsList.slice(0, 10);
-        var medLabels = topMeds.map(function(d) { return d.nome; });
-        var medData = topMeds.map(function(d) { return d.faturamento; });
-        
-        chartTopMedicosInst = new Chart(ctxMed, {
-          type: 'bar',
-          data: {
-            labels: medLabels,
-            datasets: [{
-              label: 'Faturamento por Médico',
-              data: medData,
-              backgroundColor: '#3B82F6',
-              borderRadius: 4
-            }]
-          },
-          options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              datalabels: {
-                color: '#FFFFFF',
-                anchor: 'end',
-                align: 'start',
-                offset: 4,
-                font: { weight: 'bold', size: 10 },
-                formatter: function(val) {
-                  return val > 0 ? 'R$' + Math.round(val) : '';
-                }
-              }
+      if (typeof Chart !== 'undefined') {
+        var ctxMed = document.getElementById("chartTopMedicos");
+        if (ctxMed) {
+          if (chartTopMedicosInst) chartTopMedicosInst.destroy();
+          
+          var topMeds = doctorsList.slice(0, 10);
+          var medLabels = topMeds.map(function(d) { return d.nome; });
+          var medData = topMeds.map(function(d) { return d.faturamento; });
+          
+          chartTopMedicosInst = new Chart(ctxMed, {
+            type: 'bar',
+            data: {
+              labels: medLabels,
+              datasets: [{
+                label: 'Faturamento por Médico',
+                data: medData,
+                backgroundColor: '#3B82F6',
+                borderRadius: 4
+              }]
             },
-            scales: {
-              x: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
-              y: { grid: { display: false }, ticks: { color: '#94A3B8' } }
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                datalabels: {
+                  color: '#FFFFFF',
+                  anchor: 'end',
+                  align: 'start',
+                  offset: 4,
+                  font: { weight: 'bold', size: 10 },
+                  formatter: function(val) {
+                    return val > 0 ? 'R$' + Math.round(val) : '';
+                  }
+                }
+              },
+              scales: {
+                x: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
+                y: { grid: { display: false }, ticks: { color: '#94A3B8' } }
+              }
             }
-          }
-        });
-      }
+          });
+        }
 
-      var ctxRep = document.getElementById("chartTopRepresentantes");
-      if (ctxRep) {
-        if (chartTopRepresentantesInst) chartTopRepresentantesInst.destroy();
-        
-        var topReps = repList.slice(0, 10);
-        var repLabels = topReps.map(function(r) { return r.nome; });
-        var repData = topReps.map(function(r) { return r.faturamento; });
-        
-        chartTopRepresentantesInst = new Chart(ctxRep, {
-          type: 'bar',
-          data: {
-            labels: repLabels,
-            datasets: [{
-              label: 'Faturamento por Representante',
-              data: repData,
-              backgroundColor: '#8B5CF6',
-              borderRadius: 4
-            }]
-          },
-          options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              datalabels: {
-                color: '#FFFFFF',
-                anchor: 'end',
-                align: 'start',
-                offset: 4,
-                font: { weight: 'bold', size: 10 },
-                formatter: function(val) {
-                  return val > 0 ? 'R$' + Math.round(val) : '';
-                }
-              }
+        var ctxRep = document.getElementById("chartTopRepresentantes");
+        if (ctxRep) {
+          if (chartTopRepresentantesInst) chartTopRepresentantesInst.destroy();
+          
+          var topReps = repList.slice(0, 10);
+          var repLabels = topReps.map(function(r) { return r.nome; });
+          var repData = topReps.map(function(r) { return r.faturamento; });
+          
+          chartTopRepresentantesInst = new Chart(ctxRep, {
+            type: 'bar',
+            data: {
+              labels: repLabels,
+              datasets: [{
+                label: 'Faturamento por Representante',
+                data: repData,
+                backgroundColor: '#8B5CF6',
+                borderRadius: 4
+              }]
             },
-            scales: {
-              x: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
-              y: { grid: { display: false }, ticks: { color: '#94A3B8' } }
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                datalabels: {
+                  color: '#FFFFFF',
+                  anchor: 'end',
+                  align: 'start',
+                  offset: 4,
+                  font: { weight: 'bold', size: 10 },
+                  formatter: function(val) {
+                    return val > 0 ? 'R$' + Math.round(val) : '';
+                  }
+                }
+              },
+              scales: {
+                x: { grid: { color: 'rgba(255,255,255,0.08)' }, ticks: { color: '#94A3B8' } },
+                y: { grid: { display: false }, ticks: { color: '#94A3B8' } }
+              }
             }
-          }
-        });
+          });
+        }
       }
     }
 
@@ -14405,102 +14472,195 @@
       }
     }
 
+    function toggleRepPasswordVisibility() {
+      var passInput = document.getElementById("newRepresentanteSenha");
+      var icon = document.getElementById("iconToggleRepPass");
+      if (!passInput || !icon) return;
+      if (passInput.type === "password") {
+        passInput.type = "text";
+        icon.className = "fa-solid fa-eye-slash";
+      } else {
+        passInput.type = "password";
+        icon.className = "fa-solid fa-eye";
+      }
+    }
+
+    function generateRandomRepPassword() {
+      var repName = document.getElementById("newRepresentanteName").value.trim() || "Rep";
+      var cleanName = repName.split(" ")[0].replace(/[^a-zA-Z0-9]/g, "");
+      cleanName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1).toLowerCase();
+      var rnd = Math.floor(1000 + Math.random() * 9000);
+      var genPassword = cleanName + "@" + rnd;
+      
+      var passInput = document.getElementById("newRepresentanteSenha");
+      passInput.value = genPassword;
+      passInput.type = "text";
+      var icon = document.getElementById("iconToggleRepPass");
+      if (icon) icon.className = "fa-solid fa-eye-slash";
+      
+      var badge = document.getElementById("repAuthStatusBadge");
+      if (badge) {
+        badge.innerHTML = '<span style="color:var(--primary); font-weight:600;"><i class="fa-solid fa-wand-magic-sparkles"></i> Senha temporária gerada: <strong>' + genPassword + '</strong>. Clique em Salvar para ativá-la.</span>';
+      }
+    }
+
     function renderRepresentantes() {
       var tbody = document.getElementById("representantesTableBody");
       tbody.innerHTML = "";
       
       if (!appData.representantes || appData.representantes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="2" class="text-center" style="color:var(--text-muted);">Nenhum representante cadastrado.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center" style="color:var(--text-muted);">Nenhum representante cadastrado.</td></tr>';
         return;
       }
       
       for (var i = 0; i < appData.representantes.length; i++) {
         var rep = appData.representantes[i];
         var tr = document.createElement("tr");
-        tr.innerHTML = '<td>' + rep + '</td>' +
+        var repSafe = rep.replace(/'/g, "\\'");
+        tr.innerHTML = '<td><strong>' + rep + '</strong></td>' +
+          '<td><span id="repBadge_' + i + '" class="badge badge-secondary" style="font-size:10px;"><i class="fa-solid fa-spinner fa-spin"></i> Checando...</span></td>' +
           '<td class="text-center">' +
-            '<button class="btn btn-secondary btn-sm" onclick="editRepresentante(\'' + rep.replace(/'/g, "\\'") + '\')" style="margin-right:4px;" title="Editar"><i class="fa-solid fa-pen"></i></button>' +
-            '<button class="btn btn-danger btn-sm" onclick="handleDeleteRepresentante(\'' + rep.replace(/'/g, "\\'") + '\')" title="Remover"><i class="fa-solid fa-trash-can"></i> Excluir</button>' +
+            '<button class="btn btn-secondary btn-sm" onclick="editRepresentante(\'' + repSafe + '\')" style="margin-right:4px;" title="Editar Representante & Gerenciar Senha"><i class="fa-solid fa-pen"></i> Editar</button>' +
+            '<button class="btn btn-danger btn-sm" onclick="handleDeleteRepresentante(\'' + repSafe + '\')" title="Remover"><i class="fa-solid fa-trash-can"></i></button>' +
           '</td>';
         tbody.appendChild(tr);
+
+        // Buscar status de autenticação assincronamente
+        (function(idx, repName) {
+          if (typeof google !== 'undefined' && google.script && google.script.run) {
+            google.script.run
+              .withSuccessHandler(function(res) {
+                var el = document.getElementById("repBadge_" + idx);
+                if (!el) return;
+                if (res && res.success && res.exists && res.hasPassword) {
+                  el.className = "badge badge-success";
+                  el.style.fontSize = "10px";
+                  el.innerHTML = '<i class="fa-solid fa-lock"></i> Senha Ativa';
+                } else if (res && res.success && res.exists) {
+                  el.className = "badge badge-warning";
+                  el.style.fontSize = "10px";
+                  el.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Sem Senha';
+                } else {
+                  el.className = "badge badge-secondary";
+                  el.style.fontSize = "10px";
+                  el.innerHTML = '<i class="fa-solid fa-user-xmark"></i> Não Vinculado';
+                }
+              })
+              .withFailureHandler(function() {
+                var el = document.getElementById("repBadge_" + idx);
+                if (el) el.innerHTML = '<i class="fa-solid fa-user"></i> Representante';
+              })
+              .getRepresentanteAuthInfo(repName, loggedUser ? loggedUser.username : 'admin');
+          }
+        })(i, rep);
       }
     }
 
     function editRepresentante(oldName) {
       document.getElementById("editRepresentanteOldName").value = oldName;
       document.getElementById("newRepresentanteName").value = oldName;
-      document.getElementById("newRepresentanteLabel").innerText = "Editar Representante Médico";
+      document.getElementById("newRepresentanteLabel").innerHTML = '<i class="fa-solid fa-user-pen" style="color:var(--primary);"></i> Editar Representante: <strong>' + oldName + '</strong>';
       document.getElementById("iconSaveRepresentante").className = "fa-solid fa-floppy-disk";
+      document.getElementById("textSaveRepresentante").innerText = "Salvar Alterações";
       document.getElementById("btnCancelEditRepresentante").style.display = "inline-block";
+
+      var passInput = document.getElementById("newRepresentanteSenha");
+      passInput.value = "";
+      passInput.type = "password";
+      var icon = document.getElementById("iconToggleRepPass");
+      if (icon) icon.className = "fa-solid fa-eye";
+      passInput.placeholder = "Digite uma nova senha para resetar (ou deixe em branco)...";
+
+      var badge = document.getElementById("repAuthStatusBadge");
+      badge.innerHTML = '<span style="color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Verificando credenciais no sistema...</span>';
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res && res.success && res.exists && res.hasPassword) {
+              badge.innerHTML = '<span style="color:var(--success); font-weight:600;"><i class="fa-solid fa-circle-check"></i> Conta de acesso ativa ("' + res.usuario + '"). Preencha o campo acima se desejar resetar a senha.</span>';
+            } else if (res && res.success && res.exists) {
+              badge.innerHTML = '<span style="color:var(--warning); font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Usuário encontrado sem senha definida. Digite uma senha acima para ativar o login.</span>';
+            } else {
+              badge.innerHTML = '<span style="color:var(--warning); font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> Sem conta de login ativa. Digite uma senha para habilitar o login de ' + oldName + '.</span>';
+            }
+          })
+          .withFailureHandler(function() {
+            badge.innerHTML = '<span style="color:var(--text-muted);">Digite a nova senha para atualizar as credenciais do representante.</span>';
+          })
+          .getRepresentanteAuthInfo(oldName, loggedUser ? loggedUser.username : 'admin');
+      } else {
+        badge.innerHTML = '<span style="color:var(--text-muted);">Digite a nova senha para atualizar as credenciais (Modo Local).</span>';
+      }
+
       document.getElementById("newRepresentanteName").focus();
     }
 
     function cancelEditRepresentante() {
       document.getElementById("editRepresentanteOldName").value = "";
       document.getElementById("newRepresentanteName").value = "";
-      document.getElementById("newRepresentanteLabel").innerText = "Cadastrar Novo Representante Médico";
+      var passInput = document.getElementById("newRepresentanteSenha");
+      if (passInput) {
+        passInput.value = "";
+        passInput.type = "password";
+        passInput.placeholder = "Digite uma nova senha para resetar...";
+      }
+      var icon = document.getElementById("iconToggleRepPass");
+      if (icon) icon.className = "fa-solid fa-eye";
+      document.getElementById("newRepresentanteLabel").innerHTML = '<i class="fa-solid fa-user-tie" style="color:var(--primary);"></i> Cadastrar Novo Representante Médico';
       document.getElementById("iconSaveRepresentante").className = "fa-solid fa-plus";
+      document.getElementById("textSaveRepresentante").innerText = "Adicionar Representante";
       document.getElementById("btnCancelEditRepresentante").style.display = "none";
+      document.getElementById("repAuthStatusBadge").innerHTML = 'Defina uma senha para que este representante consiga autenticar no sistema.';
     }
 
     function handleAddRepresentante() {
       var name = document.getElementById("newRepresentanteName").value.trim();
+      var password = document.getElementById("newRepresentanteSenha") ? document.getElementById("newRepresentanteSenha").value.trim() : "";
+      var oldName = document.getElementById("editRepresentanteOldName").value.trim();
+
       if (!name) {
         alert("Preencha o nome do representante.");
         return;
       }
-      
-      var oldName = document.getElementById("editRepresentanteOldName").value;
-      if (oldName) {
-        showLoading("Renomeando representante...");
-        if (typeof google === 'undefined' || !google.script) {
+
+      showLoading(oldName ? "Atualizando representante e credenciais..." : "Cadastrando representante...");
+      var loggedUsername = loggedUser ? loggedUser.username : 'admin';
+
+      if (typeof google === 'undefined' || !google.script) {
+        if (oldName) {
           var idx = appData.representantes.indexOf(oldName);
           if (idx !== -1) appData.representantes[idx] = name;
-          hideLoading();
-          cancelEditRepresentante();
-          renderRepresentantes();
-          return;
-        }
-        google.script.run
-          .withSuccessHandler(function(res) {
-            hideLoading();
-            if (res.success) {
-              cancelEditRepresentante();
-              loadDataFromServer();
-            } else {
-              alert(res.error);
-            }
-          })
-          .withFailureHandler(function(err) {
-            hideLoading();
-            alert("Erro: " + err.toString());
-          })
-          .renameRepresentante(oldName, name, loggedUser.username);
-      } else {
-        showLoading("Adicionando representante...");
-        if (typeof google === 'undefined' || !google.script) {
+        } else {
           appData.representantes.push(name);
-          document.getElementById("newRepresentanteName").value = "";
-          hideLoading();
-          renderRepresentantes();
-          return;
         }
-        google.script.run
-          .withSuccessHandler(function(res) {
-            hideLoading();
-            if (res.success) {
-              document.getElementById("newRepresentanteName").value = "";
-              loadDataFromServer();
-            } else {
-              alert(res.error);
-            }
-          })
-          .withFailureHandler(function(err) {
-            hideLoading();
-            alert("Erro: " + err.toString());
-          })
-          .addRepresentante(name, loggedUser.username);
+        hideLoading();
+        cancelEditRepresentante();
+        renderRepresentantes();
+        alert("Operação concluída com sucesso (Modo Local).");
+        return;
       }
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          hideLoading();
+          if (res && res.success) {
+            cancelEditRepresentante();
+            loadDataFromServer();
+            var msg = "Representante '" + name + "' salvo com sucesso!";
+            if (password) {
+              msg += "\n\n✓ Senha de acesso atualizada/resetada para: " + password + "\nO representante já pode efetuar login com esta senha.";
+            }
+            alert(msg);
+          } else {
+            alert("Erro ao salvar: " + (res && res.error ? res.error : "Falha desconhecida"));
+          }
+        })
+        .withFailureHandler(function(err) {
+          hideLoading();
+          alert("Erro de comunicação: " + err.toString());
+        })
+        .saveRepresentanteWithPassword(oldName, name, password, loggedUsername);
     }
     
     function handleDeleteRepresentante(name) {
@@ -17187,21 +17347,33 @@
       var list = appData.medicos || [];
       var filtered = list;
 
-      // Filtro da carteira: apenas médicos vinculados ao representante logado
+      // Filtro da carteira: apenas médicos vinculados ao representante logado, médicos sem representante ou já visitados pelo representante
       if (!isAdmin && repName) {
+        var visitedCrms = {};
+        (appData.visitas || []).forEach(function(v) {
+          if (removeAccents(v.representante || '').toLowerCase() === removeAccents(repName).toLowerCase()) {
+            var c = normalizeCrm(v.medicoCrm || v.medico_crm);
+            if (c) visitedCrms[c] = true;
+          }
+        });
+
         filtered = list.filter(function(m) {
-          return removeAccents(m.representante || '').toLowerCase() === removeAccents(repName).toLowerCase();
+          var isMyRep = removeAccents(m.representante || '').toLowerCase() === removeAccents(repName).toLowerCase();
+          var isUnassigned = !m.representante || m.representante.trim() === '';
+          var wasVisitedByMe = visitedCrms[normalizeCrm(m.crm)];
+          return isMyRep || isUnassigned || wasVisitedByMe;
         });
       }
 
       // Ordenar por nome
       filtered.sort(function(a, b) {
-        return a.nome.localeCompare(b.nome);
+        return (a.nome || '').localeCompare(b.nome || '');
       });
 
       for (var i = 0; i < filtered.length; i++) {
         var m = filtered[i];
-        medSelect.innerHTML += '<option value="' + m.crm + '" data-nome="' + (m.nome || '').replace(/"/g, '&quot;') + '">' + m.nome + ' (CRM: ' + m.crm + ')</option>';
+        var isUnassignedTag = (!m.representante || m.representante.trim() === '') ? ' [Geral]' : '';
+        medSelect.innerHTML += '<option value="' + m.crm + '" data-nome="' + (m.nome || '').replace(/"/g, '&quot;') + '">' + m.nome + ' (CRM: ' + m.crm + ')' + isUnassignedTag + '</option>';
       }
     }
 
@@ -17468,14 +17640,29 @@
 
       var list = (appData.medicos || []).slice();
 
-      // Verificar duplicação
-      var exists = list.some(function(m, index) {
+      // Verificar duplicação ou médico já existente no cadastro
+      var existingDoctorIdx = list.findIndex(function(m, index) {
         if (editIdx !== -1 && index === editIdx) return false;
         return normalizeCrm(m.crm) === normalizeCrm(crm);
       });
 
-      if (exists) {
-        alert("Já existe um médico cadastrado com este CRM.");
+      if (existingDoctorIdx !== -1 && editIdx === -1) {
+        var existingDoc = list[existingDoctorIdx];
+        var rep = loggedUser ? loggedUser.nome : "";
+        if (!existingDoc.representante || existingDoc.representante.trim() === '' || removeAccents(existingDoc.representante).toLowerCase() !== removeAccents(rep).toLowerCase()) {
+          existingDoc.representante = rep;
+          if (typeof google !== 'undefined' && google.script && google.script.run) {
+            google.script.run.saveConfigParam('medicos', JSON.stringify(list), rep);
+          }
+        }
+        populateVisitaMedicosDropdown();
+        var medSelect = document.getElementById("visitaMedicoSelect");
+        if (medSelect) {
+          medSelect.value = existingDoc.crm;
+          handleVisitaMedicoChange();
+        }
+        cancelQuickMedico();
+        alert("Médico encontrado (" + existingDoc.nome + ") e selecionado para o lançamento da visita!");
         return;
       }
 
@@ -17728,7 +17915,6 @@
         .withSuccessHandler(function(res) {
           resetState();
           if (res && res.success) {
-            alert("Visita médica registrada e gravada com sucesso!");
             var savedRec = res.record || (res.data && !Array.isArray(res.data) ? res.data : record);
 
             if (res.data && Array.isArray(res.data)) {
@@ -17755,6 +17941,7 @@
 
             closeVisitaModal();
             renderVisitasTable();
+            alert("Visita médica registrada e gravada com sucesso!");
           } else {
             alert("Erro ao registrar no servidor: " + (res ? res.error : "Resposta inválida"));
           }
@@ -19272,175 +19459,177 @@
         else if (st === 'perdido') statusCounts.perdido++;
       });
 
-      var ctxFunil = document.getElementById("chartLeadFunil");
-      if (ctxFunil) {
-        if (chartLeadFunilInst) chartLeadFunilInst.destroy();
-        chartLeadFunilInst = new Chart(ctxFunil, {
-          type: 'doughnut',
-          data: {
-            labels: ['Entrante', 'Em Espera', 'Efetivado', 'Perdido'],
-            datasets: [{
-              data: [statusCounts.entrante, statusCounts.espera, statusCounts.efetivado, statusCounts.perdido],
-              backgroundColor: ['#3b82f6', '#eab308', '#10b981', '#ef4444'],
-              borderColor: 'rgba(30, 41, 59, 0.8)',
-              borderWidth: 2
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                position: 'bottom',
-                labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
+      if (typeof Chart !== 'undefined') {
+        var ctxFunil = document.getElementById("chartLeadFunil");
+        if (ctxFunil) {
+          if (chartLeadFunilInst) chartLeadFunilInst.destroy();
+          chartLeadFunilInst = new Chart(ctxFunil, {
+            type: 'doughnut',
+            data: {
+              labels: ['Entrante', 'Em Espera', 'Efetivado', 'Perdido'],
+              datasets: [{
+                data: [statusCounts.entrante, statusCounts.espera, statusCounts.efetivado, statusCounts.perdido],
+                backgroundColor: ['#3b82f6', '#eab308', '#10b981', '#ef4444'],
+                borderColor: 'rgba(30, 41, 59, 0.8)',
+                borderWidth: 2
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
+                }
               }
+            }
+          });
+        }
+
+        var lojas = appData.lojas || [];
+        var leadsPorLoja = {};
+        var convPorLoja = {};
+        lojas.forEach(function(store) {
+          leadsPorLoja[store] = 0;
+          convPorLoja[store] = 0;
+        });
+        leads.forEach(function(l) {
+          var s = l.loja || l.loja_destino || "";
+          if (leadsPorLoja[s] !== undefined) {
+            leadsPorLoja[s]++;
+            if ((l.status || '').toLowerCase() === 'efetivado') {
+              convPorLoja[s]++;
             }
           }
         });
-      }
 
-      var lojas = appData.lojas || [];
-      var leadsPorLoja = {};
-      var convPorLoja = {};
-      lojas.forEach(function(store) {
-        leadsPorLoja[store] = 0;
-        convPorLoja[store] = 0;
-      });
-      leads.forEach(function(l) {
-        var s = l.loja || l.loja_destino || "";
-        if (leadsPorLoja[s] !== undefined) {
-          leadsPorLoja[s]++;
-          if ((l.status || '').toLowerCase() === 'efetivado') {
-            convPorLoja[s]++;
-          }
-        }
-      });
-
-      var ctxLojas = document.getElementById("chartLeadLojas");
-      if (ctxLojas) {
-        if (chartLeadLojasInst) chartLeadLojasInst.destroy();
-        chartLeadLojasInst = new Chart(ctxLojas, {
-          type: 'bar',
-          data: {
-            labels: lojas,
-            datasets: [
-              {
-                label: 'Total Leads',
-                data: lojas.map(function(s) { return leadsPorLoja[s]; }),
-                backgroundColor: 'rgba(59, 130, 246, 0.6)',
-                borderColor: '#3b82f6',
-                borderWidth: 1
+        var ctxLojas = document.getElementById("chartLeadLojas");
+        if (ctxLojas) {
+          if (chartLeadLojasInst) chartLeadLojasInst.destroy();
+          chartLeadLojasInst = new Chart(ctxLojas, {
+            type: 'bar',
+            data: {
+              labels: lojas,
+              datasets: [
+                {
+                  label: 'Total Leads',
+                  data: lojas.map(function(s) { return leadsPorLoja[s]; }),
+                  backgroundColor: 'rgba(59, 130, 246, 0.6)',
+                  borderColor: '#3b82f6',
+                  borderWidth: 1
+                },
+                {
+                  label: 'Efetivados',
+                  data: lojas.map(function(s) { return convPorLoja[s]; }),
+                  backgroundColor: 'rgba(16, 185, 129, 0.6)',
+                  borderColor: '#10b981',
+                  borderWidth: 1
+                }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
+                }
               },
-              {
-                label: 'Efetivados',
-                data: lojas.map(function(s) { return convPorLoja[s]; }),
-                backgroundColor: 'rgba(16, 185, 129, 0.6)',
-                borderColor: '#10b981',
-                borderWidth: 1
+              scales: {
+                x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+                y: { ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } }
               }
-            ]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                position: 'bottom',
-                labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
-              }
-            },
-            scales: {
-              x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
-              y: { ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } }
             }
-          }
-        });
-      }
-
-      var campaigns = appData.campanhas || [];
-      var leadsPorCamp = {};
-      campaigns.forEach(function(c) {
-        leadsPorCamp[c.nome] = 0;
-      });
-      leadsPorCamp['Desconhecida'] = 0;
-
-      leads.forEach(function(l) {
-        var c = campaigns.find(function(camp) { return camp.id == l.campanha_id; });
-        var name = c ? c.nome : 'Desconhecida';
-        if (leadsPorCamp[name] !== undefined) {
-          leadsPorCamp[name]++;
-        } else {
-          leadsPorCamp[name] = 1;
+          });
         }
-      });
 
-      var campLabels = Object.keys(leadsPorCamp).filter(function(k) { return leadsPorCamp[k] > 0; });
-      var campData = campLabels.map(function(k) { return leadsPorCamp[k]; });
+        var campaigns = appData.campanhas || [];
+        var leadsPorCamp = {};
+        campaigns.forEach(function(c) {
+          leadsPorCamp[c.nome] = 0;
+        });
+        leadsPorCamp['Desconhecida'] = 0;
 
-      var ctxCamp = document.getElementById("chartLeadCampanhas");
-      if (ctxCamp) {
-        if (chartLeadCampanhasInst) chartLeadCampanhasInst.destroy();
-        chartLeadCampanhasInst = new Chart(ctxCamp, {
-          type: 'bar',
-          data: {
-            labels: campLabels,
-            datasets: [{
-              label: 'Leads',
-              data: campData,
-              backgroundColor: 'rgba(139, 92, 246, 0.6)',
-              borderColor: '#8b5cf6',
-              borderWidth: 1
-            }]
-          },
-          options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false }
-            },
-            scales: {
-              x: { ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } },
-              y: { ticks: { color: '#94a3b8' }, grid: { display: false } }
-            }
+        leads.forEach(function(l) {
+          var c = campaigns.find(function(camp) { return camp.id == l.campanha_id; });
+          var name = c ? c.nome : 'Desconhecida';
+          if (leadsPorCamp[name] !== undefined) {
+            leadsPorCamp[name]++;
+          } else {
+            leadsPorCamp[name] = 1;
           }
         });
-      }
 
-      var pagCounts = {};
-      efetivados.forEach(function(l) {
-        var fp = l.forma_pagamento || 'Outro';
-        pagCounts[fp] = (pagCounts[fp] || 0) + 1;
-      });
+        var campLabels = Object.keys(leadsPorCamp).filter(function(k) { return leadsPorCamp[k] > 0; });
+        var campData = campLabels.map(function(k) { return leadsPorCamp[k]; });
 
-      var pagLabels = Object.keys(pagCounts);
-      var pagData = pagLabels.map(function(k) { return pagCounts[k]; });
-
-      var ctxPag = document.getElementById("chartLeadPagamentos");
-      if (ctxPag) {
-        if (chartLeadPagamentosInst) chartLeadPagamentosInst.destroy();
-        chartLeadPagamentosInst = new Chart(ctxPag, {
-          type: 'pie',
-          data: {
-            labels: pagLabels,
-            datasets: [{
-              data: pagData,
-              backgroundColor: ['#10b981', '#3b82f6', '#8b5cf6', '#eab308', '#ef4444', '#6b7280'],
-              borderColor: 'rgba(30, 41, 59, 0.8)',
-              borderWidth: 2
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                position: 'bottom',
-                labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
+        var ctxCamp = document.getElementById("chartLeadCampanhas");
+        if (ctxCamp) {
+          if (chartLeadCampanhasInst) chartLeadCampanhasInst.destroy();
+          chartLeadCampanhasInst = new Chart(ctxCamp, {
+            type: 'bar',
+            data: {
+              labels: campLabels,
+              datasets: [{
+                label: 'Leads',
+                data: campData,
+                backgroundColor: 'rgba(139, 92, 246, 0.6)',
+                borderColor: '#8b5cf6',
+                borderWidth: 1
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false }
+              },
+              scales: {
+                x: { ticks: { color: '#94a3b8', precision: 0 }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#94a3b8' }, grid: { display: false } }
               }
             }
-          }
+          });
+        }
+
+        var pagCounts = {};
+        efetivados.forEach(function(l) {
+          var fp = l.forma_pagamento || 'Outro';
+          pagCounts[fp] = (pagCounts[fp] || 0) + 1;
         });
+
+        var pagLabels = Object.keys(pagCounts);
+        var pagData = pagLabels.map(function(k) { return pagCounts[k]; });
+
+        var ctxPag = document.getElementById("chartLeadPagamentos");
+        if (ctxPag) {
+          if (chartLeadPagamentosInst) chartLeadPagamentosInst.destroy();
+          chartLeadPagamentosInst = new Chart(ctxPag, {
+            type: 'pie',
+            data: {
+              labels: pagLabels,
+              datasets: [{
+                data: pagData,
+                backgroundColor: ['#10b981', '#3b82f6', '#8b5cf6', '#eab308', '#ef4444', '#6b7280'],
+                borderColor: 'rgba(30, 41, 59, 0.8)',
+                borderWidth: 2
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom',
+                  labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
+                }
+              }
+            }
+          });
+        }
       }
     }
 

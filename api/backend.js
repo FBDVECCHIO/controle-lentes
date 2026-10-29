@@ -171,6 +171,9 @@ async function authenticateUser(username, password) {
   try {
     var users = await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(username));
     if (users.length === 0) {
+      users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(username.trim()));
+    }
+    if (users.length === 0) {
       return { success: false, error: "Usuário não encontrado." };
     }
     
@@ -991,24 +994,149 @@ async function deleteVendedor(name, loggedUserUsername) {
 }
 
 // 4. Representantes
-async function saveRepresentante(name, loggedUserUsername) {
+async function getRepresentanteAuthInfo(repName, loggedUserUsername) {
   if (!await validateUserSession(loggedUserUsername, 'configuracoes')) {
     return { success: false, error: 'SESSION_EXPIRED' };
   }
   try {
-    var exists = await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(name));
-    if (exists.length > 0) {
-      return { success: true };
+    if (!repName) return { success: false, error: "Nome não informado" };
+    var users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(repName.trim()));
+    if (users && users.length > 0) {
+      return {
+        success: true,
+        exists: true,
+        usuario: users[0].usuario,
+        status: users[0].status,
+        hasPassword: !!(users[0].senha && String(users[0].senha).trim() !== "")
+      };
     }
-    await supabaseFetch("/representantes", {
-      method: "POST",
-      payload: JSON.stringify({ nome: name })
-    });
-    await logAction(loggedUserUsername, "Cadastrou representante: " + name);
-    return { success: true };
+    return {
+      success: true,
+      exists: false,
+      hasPassword: false
+    };
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+async function saveRepresentanteWithPassword(oldName, newName, password, loggedUserUsername) {
+  if (!await validateUserSession(loggedUserUsername, 'configuracoes')) {
+    return { success: false, error: 'SESSION_EXPIRED' };
+  }
+  try {
+    oldName = (oldName || "").trim();
+    newName = (newName || "").trim();
+    password = (password || "").trim();
+
+    if (!newName && !oldName) {
+      return { success: false, error: "Nome do representante é obrigatório." };
+    }
+
+    var finalName = newName || oldName;
+
+    // 1. Processo de renomeação ou criação do representante
+    if (oldName) {
+      if (newName && newName !== oldName) {
+        var existingNew = await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(newName));
+        if (existingNew && existingNew.length > 0) {
+          return { success: false, error: "Já existe outro representante com o nome '" + newName + "'." };
+        }
+
+        await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(oldName), {
+          method: "PATCH",
+          payload: JSON.stringify({ nome: newName })
+        });
+
+        // Atualizar vínculos em tabelas relacionadas para manter histórico consistente
+        try {
+          await supabaseFetch("/visitas_medicas?representante=eq." + encodeURIComponent(oldName), {
+            method: "PATCH",
+            payload: JSON.stringify({ representante: newName })
+          });
+          await supabaseFetch("/medicos?representante=eq." + encodeURIComponent(oldName), {
+            method: "PATCH",
+            payload: JSON.stringify({ representante: newName })
+          });
+          await supabaseFetch("/clinicas?representante=eq." + encodeURIComponent(oldName), {
+            method: "PATCH",
+            payload: JSON.stringify({ representante: newName })
+          });
+        } catch (linkErr) {
+          console.warn("Aviso ao atualizar vínculos de representante:", linkErr);
+        }
+
+        // Se existia conta de usuário com o nome antigo, atualiza para o novo nome
+        var oldUsers = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(oldName));
+        if (oldUsers && oldUsers.length > 0) {
+          await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(oldUsers[0].usuario), {
+            method: "PATCH",
+            payload: JSON.stringify({ usuario: newName, nome: newName })
+          });
+        }
+        await logAction(loggedUserUsername, "Renomeou representante de '" + oldName + "' para '" + newName + "'");
+      }
+    } else {
+      var exists = await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(finalName));
+      if (!exists || exists.length === 0) {
+        await supabaseFetch("/representantes", {
+          method: "POST",
+          payload: JSON.stringify({ nome: finalName })
+        });
+        await logAction(loggedUserUsername, "Cadastrou representante: " + finalName);
+      }
+    }
+
+    // 2. Gerenciamento e Reset de Senha no Cadastro de Usuários
+    if (password) {
+      var users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(finalName));
+      if (users && users.length > 0) {
+        await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(users[0].usuario), {
+          method: "PATCH",
+          payload: JSON.stringify({
+            senha: password,
+            status: 'ATIVO'
+          })
+        });
+        await logAction(loggedUserUsername, "Resetou a senha de acesso do representante: " + finalName);
+      } else {
+        var newRepUser = {
+          usuario: finalName,
+          nome: finalName,
+          senha: password,
+          status: 'ATIVO',
+          loja: 'Todos',
+          conferencia: 'INATIVO',
+          registros: 'INATIVO',
+          dashboard: 'INATIVO',
+          auditoria: 'INATIVO',
+          configuracoes: 'INATIVO',
+          logs: 'INATIVO',
+          venda: 'ATIVO',
+          log_vendas: 'INATIVO',
+          resumo_vendas: 'INATIVO',
+          medicos: 'med,vis' // Habilita médicos e visitas médicas
+        };
+        await supabaseFetch("/usuarios", {
+          method: "POST",
+          payload: JSON.stringify(newRepUser)
+        });
+        await logAction(loggedUserUsername, "Criou conta de acesso com senha para o representante: " + finalName);
+      }
+    }
+
+    return { success: true, name: finalName, passwordUpdated: !!password };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+async function saveRepresentante(name, loggedUserUsername, password) {
+  return saveRepresentanteWithPassword("", name, password, loggedUserUsername);
+}
+
+async function renameRepresentante(oldName, newName, loggedUserUsername, password) {
+  return saveRepresentanteWithPassword(oldName, newName, password, loggedUserUsername);
 }
 
 async function deleteRepresentante(name, loggedUserUsername) {
@@ -1017,23 +1145,18 @@ async function deleteRepresentante(name, loggedUserUsername) {
   }
   try {
     await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(name), { method: "DELETE" });
+    try {
+      var users = await supabaseFetch("/usuarios?usuario=ilike." + encodeURIComponent(name));
+      if (users && users.length > 0) {
+        await supabaseFetch("/usuarios?usuario=eq." + encodeURIComponent(users[0].usuario), {
+          method: "PATCH",
+          payload: JSON.stringify({ status: 'INATIVO' })
+        });
+      }
+    } catch (uErr) {
+      console.warn("Aviso ao inativar login do representante excluído:", uErr);
+    }
     await logAction(loggedUserUsername, "Excluiu representante: " + name);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.toString() };
-  }
-}
-
-async function renameRepresentante(oldName, newName, loggedUserUsername) {
-  if (!await validateUserSession(loggedUserUsername, 'configuracoes')) {
-    return { success: false, error: 'SESSION_EXPIRED' };
-  }
-  try {
-    await supabaseFetch("/representantes?nome=eq." + encodeURIComponent(oldName), {
-      method: "PATCH",
-      payload: JSON.stringify({ nome: newName })
-    });
-    await logAction(loggedUserUsername, "Renomeou representante de '" + oldName + "' para '" + newName + "'");
     return { success: true };
   } catch (e) {
     return { success: false, error: e.toString() };
@@ -3280,6 +3403,7 @@ const backendFunctions = {
   addLab, deleteLab, renameLab, editLab,
   addVendedor, deleteVendedor,
   addRepresentante, saveRepresentante, deleteRepresentante, renameRepresentante,
+  saveRepresentanteWithPassword, getRepresentanteAuthInfo,
   addContatoResumo, deleteContatoResumo,
   addProduto, deleteProduto, editProduto,
   addMedico, addClinica,
