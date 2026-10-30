@@ -6043,63 +6043,66 @@
         if (initOcoDate && !initOcoDate.value) initOcoDate.value = y + "-" + m + "-01";
         if (endOcoDate && !endOcoDate.value) endOcoDate.value = y + "-" + m + "-" + ("0" + new Date(y, d.getMonth() + 1, 0).getDate()).slice(-2);
 
-        populateSelectors();
-        renderLojas();
-        renderLabs();
-        renderVendedores();
-        renderProdutos();
-        renderLogs();
-        renderLogVendas();
-        renderConferencias();
-        renderRepresentantes();
-        renderContatosResumo();
-        renderConfigMedicos();
-        renderConfigClinicas();
-        renderBulkLists();
-        renderGarantiasTab();
-        renderDevolucoesTab();
-        renderMedicosTab();
-        renderCaptadores();
-        renderMotivosPerda();
-        renderConfigMotivosOco();
-        renderConfigFormasPagamento();
-        renderOrcamentosTable();
-        renderOcorrenciasTable();
-        renderVisitaMedicaTab();
-        renderAssistenciaTab();
+        try { populateSelectors(); } catch (e) { console.warn("populateSelectors:", e); }
+        try { renderLojas(); } catch (e) { console.warn("renderLojas:", e); }
+        try { renderLabs(); } catch (e) { console.warn("renderLabs:", e); }
+        try { renderVendedores(); } catch (e) { console.warn("renderVendedores:", e); }
+        try { renderProdutos(); } catch (e) { console.warn("renderProdutos:", e); }
+        try { renderLogs(); } catch (e) { console.warn("renderLogs:", e); }
+        try { renderLogVendas(); } catch (e) { console.warn("renderLogVendas:", e); }
+        try { renderConferencias(); } catch (e) { console.warn("renderConferencias:", e); }
+        try { renderRepresentantes(); } catch (e) { console.warn("renderRepresentantes:", e); }
+        try { renderContatosResumo(); } catch (e) { console.warn("renderContatosResumo:", e); }
+        try { renderConfigMedicos(); } catch (e) { console.warn("renderConfigMedicos:", e); }
+        try { renderConfigClinicas(); } catch (e) { console.warn("renderConfigClinicas:", e); }
+        try { renderBulkLists(); } catch (e) { console.warn("renderBulkLists:", e); }
+        try { renderGarantiasTab(); } catch (e) { console.warn("renderGarantiasTab:", e); }
+        try { renderDevolucoesTab(); } catch (e) { console.warn("renderDevolucoesTab:", e); }
+        try { renderMedicosTab(); } catch (e) { console.warn("renderMedicosTab:", e); }
+        try { renderCaptadores(); } catch (e) { console.warn("renderCaptadores:", e); }
+        try { renderMotivosPerda(); } catch (e) { console.warn("renderMotivosPerda:", e); }
+        try { renderConfigMotivosOco(); } catch (e) { console.warn("renderConfigMotivosOco:", e); }
+        try { renderConfigFormasPagamento(); } catch (e) { console.warn("renderConfigFormasPagamento:", e); }
+        try { renderOrcamentosTable(); } catch (e) { console.warn("renderOrcamentosTable:", e); }
+        try { renderOcorrenciasTable(); } catch (e) { console.warn("renderOcorrenciasTable:", e); }
+        try { renderVisitaMedicaTab(); } catch (e) { console.warn("renderVisitaMedicaTab:", e); }
+        try { renderAssistenciaTab(); } catch (e) { console.warn("renderAssistenciaTab:", e); }
 
-        
         if (appData.configs && appData.configs.logoUrl) {
-          applyAppLogo(appData.configs.logoUrl);
+          try { applyAppLogo(appData.configs.logoUrl); } catch (e) {}
         } else {
-          applyAppLogo('');
+          try { applyAppLogo(''); } catch (e) {}
         }
         
         // Populate Contatos Resumo Dropdown
-        var whatsContatoSelect = document.getElementById("whatsResumoContato");
-        if (whatsContatoSelect) {
-          whatsContatoSelect.innerHTML = '<option value="">Selecione o contato...</option>';
-          var contacts = appData.contatosResumo || [];
-          contacts.forEach(function(c) {
-            var opt = document.createElement("option");
-            opt.value = c.telefone;
-            opt.textContent = c.nome + " (" + c.telefone + ")";
-            whatsContatoSelect.appendChild(opt);
-          });
-          
-          // Try restoring selected contact from localStorage
-          var savedContactPhone = localStorage.getItem('selectedResumoContact');
-          if (savedContactPhone) {
-            whatsContatoSelect.value = savedContactPhone;
+        try {
+          var whatsContatoSelect = document.getElementById("whatsResumoContato");
+          if (whatsContatoSelect) {
+            whatsContatoSelect.innerHTML = '<option value="">Selecione o contato...</option>';
+            var contacts = appData.contatosResumo || [];
+            contacts.forEach(function(c) {
+              var opt = document.createElement("option");
+              opt.value = c.telefone;
+              opt.textContent = c.nome + " (" + c.telefone + ")";
+              whatsContatoSelect.appendChild(opt);
+            });
+            
+            // Try restoring selected contact from localStorage
+            var savedContactPhone = localStorage.getItem('selectedResumoContact');
+            if (savedContactPhone) {
+              whatsContatoSelect.value = savedContactPhone;
+            }
           }
-        }
+        } catch (e) {}
         
-        if (userActiveTab === 'lead') {
-          renderLeadKanban();
-        }
-        if (userActiveTab === 'controleLead') {
-          renderControleLeadTab();
-        }
+        try {
+          if (userActiveTab === 'lead') {
+            renderLeadKanban();
+          }
+          if (userActiveTab === 'controleLead') {
+            renderControleLeadTab();
+          }
+        } catch (e) {}
         
         hideLoading();
         
@@ -6107,6 +6110,7 @@
           showLogin();
         }
       } else {
+        hideLoading();
         onDataError(response.error);
       }
     }
@@ -9203,9 +9207,9 @@
           if (v.loja !== loggedUser.loja) return false;
         }
 
-        var matchText = v.clienteNome.toLowerCase().indexOf(q) !== -1 || 
-                          v.osVenda.toString().toLowerCase().indexOf(q) !== -1 || 
-                          v.vendedor.toLowerCase().indexOf(q) !== -1 ||
+        var matchText = (v.clienteNome || "").toLowerCase().indexOf(q) !== -1 || 
+                          (v.osVenda || "").toString().toLowerCase().indexOf(q) !== -1 || 
+                          (v.vendedor || "").toLowerCase().indexOf(q) !== -1 ||
                           (v.aro1Marca || "").toLowerCase().indexOf(q) !== -1 ||
                           (v.aro1Modelo || "").toLowerCase().indexOf(q) !== -1 ||
                           (v.aro1Lente || "").toLowerCase().indexOf(q) !== -1 ||
@@ -18943,9 +18947,9 @@
           if (v.loja !== loggedUser.loja) return false;
         }
 
-        var matchText = v.clienteNome.toLowerCase().indexOf(q) !== -1 || 
-                          v.osVenda.toString().toLowerCase().indexOf(q) !== -1 || 
-                          v.vendedor.toLowerCase().indexOf(q) !== -1 ||
+        var matchText = (v.clienteNome || "").toLowerCase().indexOf(q) !== -1 || 
+                          (v.osVenda || "").toString().toLowerCase().indexOf(q) !== -1 || 
+                          (v.vendedor || "").toLowerCase().indexOf(q) !== -1 ||
                           (v.aro1Marca || "").toLowerCase().indexOf(q) !== -1 ||
                           (v.aro1Modelo || "").toLowerCase().indexOf(q) !== -1 ||
                           (v.aro1Lente || "").toLowerCase().indexOf(q) !== -1 ||
@@ -19198,9 +19202,9 @@
           if (v.loja !== loggedUser.loja) return false;
         }
 
-        var matchText = v.clienteNome.toLowerCase().indexOf(q) !== -1 || 
-                          v.osVenda.toString().toLowerCase().indexOf(q) !== -1 || 
-                          v.vendedor.toLowerCase().indexOf(q) !== -1;
+        var matchText = (v.clienteNome || "").toLowerCase().indexOf(q) !== -1 || 
+                          (v.osVenda || "").toString().toLowerCase().indexOf(q) !== -1 || 
+                          (v.vendedor || "").toLowerCase().indexOf(q) !== -1;
 
         var matchLoja = (fLoja === 'Todas' || v.loja === fLoja);
         var matchVendedor = (fVendedor === 'Todos' || v.vendedor === fVendedor);

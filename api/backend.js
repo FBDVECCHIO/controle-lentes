@@ -703,8 +703,11 @@ async function getAppData(loggedUser, options) {
             acc.push({
               osVenda: v.os_venda,
               data: ymdToDmy(v.data),
-              loja: v.loja,
+              loja: v.loja || '',
+              vendedor: '',
+              clienteNome: '',
               totalVenda: Number(v.total_venda) || 0,
+              valorResidual: 0,
               medicoCrm: mCrm,
               medicoNome: mNome,
               medicoComissao: det.medicoComissao || 'S'
