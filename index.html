@@ -282,6 +282,29 @@
       }
     }
 
+    function forceHardRefreshApp() {
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            for (var i = 0; i < regs.length; i++) {
+              regs[i].unregister();
+            }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(keys) {
+            for (var i = 0; i < keys.length; i++) {
+              caches.delete(keys[i]);
+            }
+          });
+        }
+      } catch (e) {}
+      setTimeout(function() {
+        var cleanUrl = window.location.origin + window.location.pathname + '?v=' + Date.now();
+        window.location.replace(cleanUrl);
+      }, 150);
+    }
+
     // Capturar todos os erros em tempo de execução para diagnóstico na tela (definido no início para capturar tudo)
     function displayGlobalError(errText, title) {
       try {
@@ -291,7 +314,7 @@
             '<h2 style="margin:0 0 10px 0; font-size: 20px;"><i class="fa-solid fa-bug"></i> ' + (title || 'Erro de Carregamento') + '</h2>' +
             '<p style="font-size:14px; margin:0 0 10px 0; opacity: 0.9;">Falha ao carregar o aplicativo. Detalhes:</p>' +
             '<pre style="background:rgba(0,0,0,0.3); padding:10px; border-radius:6px; font-size:12px; overflow-x:auto; white-space:pre-wrap; text-align:left; word-break:break-all; font-family:monospace; margin:0;">' + errText + '</pre>' +
-            '<button onclick="location.reload()" style="margin-top:15px; background:white; color:#dc2626; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; font-family:inherit;">Recarregar</button>' +
+            '<button onclick="forceHardRefreshApp()" style="margin-top:15px; background:white; color:#dc2626; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer; font-family:inherit;">Recarregar e Atualizar App</button>' +
           '</div>';
         if (overlay) {
           overlay.style.display = "flex";
@@ -20374,9 +20397,27 @@
         window.location.hostname.indexOf('google.com') === -1) {
       window.addEventListener('load', function() {
         navigator.serviceWorker.register('./service-worker.js')
+          .then(function(reg) {
+            if (reg) {
+              reg.update().catch(function() {});
+              document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') {
+                  reg.update().catch(function() {});
+                }
+              });
+            }
+          })
           .catch(function(err) {
             console.warn('Service Worker registration skipped:', err);
           });
+
+        var swRefreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (!swRefreshing) {
+            swRefreshing = true;
+            window.location.reload();
+          }
+        });
       });
     }
   </script>

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lentes-cache-v3';
+const CACHE_NAME = 'lentes-cache-v4';
 const urlsToCache = [
   './index.html',
   './manifest.json',
@@ -26,7 +26,9 @@ self.addEventListener('activate', function(event) {
           return caches.delete(cacheName);
         })
       );
-    }).then(function() { return self.clients.claim(); })
+    }).then(function() {
+      return self.clients.claim();
+    })
   );
 });
 
@@ -36,10 +38,10 @@ self.addEventListener('fetch', function(event) {
     return;
   }
 
-  // Network-first para navegação/HTML principal garantindo atualizações imediatas com fallback offline
+  // Network-first rigoroso para navegação/HTML principal garantindo atualizações imediatas com fallback offline
   if (event.request.mode === 'navigate' || event.request.url.indexOf('index.html') !== -1) {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: 'reload' })
         .then(function(response) {
           if (response && response.ok) {
             var copy = response.clone();
