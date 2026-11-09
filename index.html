@@ -18,38 +18,31 @@
     // Conexões protegidas exclusivamente via API Serverless Segura
     // Configurar API de comunicação para quando rodar fora do Google Sheets (ex: Vercel)
     if (typeof google === 'undefined' || !google.script || !google.script.run) {
-      window.google = {
-        script: {
-          run: {
-            withSuccessHandler: function(onSuccess) {
-              var handlerObj = {
-                withFailureHandler: function(onFailure) {
-                  return new Proxy({}, {
-                    get: function(target, prop) {
-                      return function() {
-                        var args = Array.prototype.slice.call(arguments);
-                        executeBackendCall(prop, args, onSuccess, onFailure);
-                      };
-                    }
-                  });
-                }
-              };
-              
-              return new Proxy(handlerObj, {
-                get: function(target, prop) {
-                  if (prop === 'withFailureHandler') {
-                    return target.withFailureHandler;
-                  }
-                  return function() {
-                    var args = Array.prototype.slice.call(arguments);
-                    executeBackendCall(prop, args, onSuccess, null);
-                  };
-                }
-              });
-            }
+      function createGoogleScriptRunProxy(onSuccess, onFailure) {
+        var baseHandlers = {
+          withSuccessHandler: function(newSuccess) {
+            return createGoogleScriptRunProxy(newSuccess, onFailure);
+          },
+          withFailureHandler: function(newFailure) {
+            return createGoogleScriptRunProxy(onSuccess, newFailure);
           }
-        }
-      };
+        };
+
+        return new Proxy(baseHandlers, {
+          get: function(target, prop) {
+            if (prop === 'withSuccessHandler') return target.withSuccessHandler;
+            if (prop === 'withFailureHandler') return target.withFailureHandler;
+            return function() {
+              var args = Array.prototype.slice.call(arguments);
+              executeBackendCall(prop, args, onSuccess || null, onFailure || null);
+            };
+          }
+        });
+      }
+
+      window.google = window.google || {};
+      window.google.script = window.google.script || {};
+      window.google.script.run = createGoogleScriptRunProxy(null, null);
 
       var OFFLINE_QUEUE_KEY = 'atlas_offline_mutation_queue_v1';
       var OFFLINE_QUEUEABLE_OPS = {
@@ -63,7 +56,8 @@
         updateAssistenciaStatus: true,
         saveLead: true,
         updateLeadStatus: true,
-        saveOcorrencia: true
+        saveOcorrencia: true,
+        upsertMedico: true
       };
       var isFlushingOfflineQueue = false;
 
@@ -18011,7 +18005,14 @@
           appData.medicos = list;
           updateCurrentAppDataCache();
           if (typeof google !== 'undefined' && google.script && google.script.run) {
-            google.script.run.upsertMedico(Object.assign({}, existingDoc, { allowOverwrite: true }), loggedUser ? loggedUser.username : rep);
+            google.script.run
+              .withSuccessHandler(function(res) {
+                console.log("[saveQuickNovoMedico] Médico atualizado com sucesso no backend:", res);
+              })
+              .withFailureHandler(function(err) {
+                console.warn("[saveQuickNovoMedico] Aviso ao sincronizar médico com backend:", err);
+              })
+              .upsertMedico(Object.assign({}, existingDoc, { allowOverwrite: true }), loggedUser ? loggedUser.username : rep);
           }
         }
         populateVisitaMedicosDropdown();
