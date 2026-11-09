@@ -15326,7 +15326,7 @@
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
-        .upsertMedico(Object.assign({}, medObj, { allowOverwrite: true }), loggedUser.username);
+        .upsertMedico(Object.assign({}, medObj, { allowOverwrite: true }), (loggedUser && loggedUser.username) ? loggedUser.username : '');
     }
 
     function deleteConfigMedico(idx) {
@@ -18111,7 +18111,7 @@
             hideLoading();
             alert("Erro no servidor: " + err.toString());
           })
-          .upsertMedico(Object.assign({}, medObj, { allowOverwrite: true }), loggedUser.username);
+          .upsertMedico(Object.assign({}, medObj, { allowOverwrite: true }), (loggedUser && loggedUser.username) ? loggedUser.username : rep);
       } else {
         google.script.run
           .withSuccessHandler(function(res) {
@@ -18134,7 +18134,7 @@
             hideLoading();
             alert("Erro no servidor: " + err.toString());
           })
-          .addMedico(medObj, loggedUser.username);
+          .upsertMedico(Object.assign({}, medObj, { allowOverwrite: true }), (loggedUser && loggedUser.username) ? loggedUser.username : rep);
       }
     }
 
