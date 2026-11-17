@@ -5570,17 +5570,19 @@
         activeOcoChartFilter.type = type;
         activeOcoChartFilter.value = value;
       }
-      renderOcorrenciasTable(true);
+      // Execução diferida no próximo ciclo para permitir que o dispatcher de eventos do Chart.js conclua seu loop sem conflito de destruição
+      setTimeout(function() {
+        renderOcorrenciasTable(true);
+      }, 15);
     }
 
     function clearOcoCrossFilter() {
       activeOcoChartFilter.type = null;
       activeOcoChartFilter.value = null;
-      renderOcorrenciasTable(true);
+      setTimeout(function() {
+        renderOcorrenciasTable(true);
+      }, 15);
     }
-    var chartOcoItemInst = null;
-    var currentFilteredOcorrencias = [];
-
     function renderPaginationControls(containerId, currentPage, totalPages, onPageChangeName) {
       var container = document.getElementById(containerId);
       if (!container) return;
@@ -9500,6 +9502,7 @@
     }
 
     // Renderização dinâmica dos 3 gráficos de Prejuízo do Dashboard com Interatividade Power BI e Otimização Visual
+    // Renderização dinâmica dos 3 gráficos de Prejuízo do Dashboard com Interatividade Power BI e Atualização In-Place Segura (.update)
     function updateOcorrenciasCharts(chartsData, activeFilter) {
       if (typeof Chart === "undefined") return;
 
@@ -9559,90 +9562,109 @@
       }
 
       if (chartOcoMotivoInst) {
-        chartOcoMotivoInst.destroy();
-        chartOcoMotivoInst = null;
-      }
-
-      var canvasMotivo = document.getElementById("chartOcoMotivo");
-      if (canvasMotivo) {
-        var ctxMotivo = canvasMotivo.getContext("2d");
-        chartOcoMotivoInst = new Chart(ctxMotivo, {
-          type: "doughnut",
-          data: {
-            labels: motivoLabels.length > 0 ? motivoLabels : ["Sem dados"],
-            datasets: [{
-              data: motivoData.length > 0 ? motivoData : [0],
-              backgroundColor: motivoLabels.length > 0 ? sliceBgColors : ["#334155"],
-              offset: sliceOffsets,
-              borderWidth: sliceBorderWidths,
-              borderColor: sliceBorderColors
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: "62%",
-            layout: {
-              padding: 12
+        // Atualização in-place sem destruir o chart (evita race condition no handleEvent do Chart.js)
+        chartOcoMotivoInst._totalMotivoSum = totalMotivoSum;
+        chartOcoMotivoInst._totalPrejuizoFiltrado = totalPrejuizoFiltrado;
+        chartOcoMotivoInst._motivoLabels = motivoLabels;
+        chartOcoMotivoInst.data.labels = motivoLabels.length > 0 ? motivoLabels : ["Sem dados"];
+        chartOcoMotivoInst.data.datasets[0].data = motivoData.length > 0 ? motivoData : [0];
+        chartOcoMotivoInst.data.datasets[0].backgroundColor = motivoLabels.length > 0 ? sliceBgColors : ["#334155"];
+        chartOcoMotivoInst.data.datasets[0].offset = sliceOffsets;
+        chartOcoMotivoInst.data.datasets[0].borderWidth = sliceBorderWidths;
+        chartOcoMotivoInst.data.datasets[0].borderColor = sliceBorderColors;
+        chartOcoMotivoInst.update();
+      } else {
+        var canvasMotivo = document.getElementById("chartOcoMotivo");
+        if (canvasMotivo) {
+          var ctxMotivo = canvasMotivo.getContext("2d");
+          chartOcoMotivoInst = new Chart(ctxMotivo, {
+            type: "doughnut",
+            data: {
+              labels: motivoLabels.length > 0 ? motivoLabels : ["Sem dados"],
+              datasets: [{
+                data: motivoData.length > 0 ? motivoData : [0],
+                backgroundColor: motivoLabels.length > 0 ? sliceBgColors : ["#334155"],
+                offset: sliceOffsets,
+                borderWidth: sliceBorderWidths,
+                borderColor: sliceBorderColors
+              }]
             },
-            onClick: function(evt, elements) {
-              if (!elements || elements.length === 0) return;
-              var idx = elements[0].index;
-              if (motivoLabels[idx] && motivoLabels[idx] !== "Sem dados") {
-                toggleOcoCrossFilter("motivo", motivoLabels[idx]);
-              }
-            },
-            onHover: function(evt, elements) {
-              if (evt && evt.native && evt.native.target) {
-                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
-              }
-            },
-            plugins: {
-              legend: {
-                position: "right",
-                labels: {
-                  color: "#F8FAFC",
-                  font: { size: 10, family: "inherit" },
-                  boxWidth: 10,
-                  padding: 8,
-                  generateLabels: function(chart) {
-                    var original = Chart.overrides.doughnut.plugins.legend.labels.generateLabels(chart);
-                    original.forEach(function(item) {
-                      if (item.text && item.text.length > 18) {
-                        item.text = item.text.substring(0, 16) + "...";
-                      }
-                    });
-                    return original;
-                  }
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              cutout: "62%",
+              layout: {
+                padding: 12
+              },
+              onClick: function(evt, elements) {
+                if (!elements || elements.length === 0) return;
+                var idx = elements[0].index;
+                var curLabels = (chartOcoMotivoInst && chartOcoMotivoInst._motivoLabels) || motivoLabels;
+                if (curLabels[idx] && curLabels[idx] !== "Sem dados") {
+                  var selectedMot = curLabels[idx];
+                  setTimeout(function() {
+                    toggleOcoCrossFilter("motivo", selectedMot);
+                  }, 10);
                 }
               },
-              tooltip: {
-                callbacks: {
-                  label: function(ctx) {
-                    var val = ctx.raw || 0;
-                    var totalRef = totalMotivoSum > 0 ? totalMotivoSum : (totalPrejuizoFiltrado > 0 ? totalPrejuizoFiltrado : 1);
-                    var pct = ((val / totalRef) * 100).toFixed(1) + "%";
-                    return " " + ctx.label + ": R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " (" + pct + ")";
-                  }
+              onHover: function(evt, elements) {
+                if (evt && evt.native && evt.native.target) {
+                  evt.native.target.style.cursor = elements.length ? "pointer" : "default";
                 }
               },
-              datalabels: {
-                display: function(ctx) {
-                  var v = ctx.dataset.data[ctx.dataIndex];
-                  var totalRef = totalMotivoSum > 0 ? totalMotivoSum : totalPrejuizoFiltrado;
-                  return totalRef > 0 && (v / totalRef) >= 0.08;
+              plugins: {
+                legend: {
+                  position: "right",
+                  labels: {
+                    color: "#F8FAFC",
+                    font: { size: 10, family: "inherit" },
+                    boxWidth: 10,
+                    padding: 8,
+                    generateLabels: function(chart) {
+                      var original = Chart.overrides.doughnut.plugins.legend.labels.generateLabels(chart);
+                      original.forEach(function(item) {
+                        if (item.text && item.text.length > 18) {
+                          item.text = item.text.substring(0, 16) + "...";
+                        }
+                      });
+                      return original;
+                    }
+                  }
                 },
-                color: "#FFFFFF",
-                font: { weight: "bold", size: 10 },
-                formatter: function(val) {
-                  var totalRef = totalMotivoSum > 0 ? totalMotivoSum : totalPrejuizoFiltrado;
-                  if (!totalRef) return "";
-                  return ((val / totalRef) * 100).toFixed(0) + "%";
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) {
+                      var val = ctx.raw || 0;
+                      var refTot = (chartOcoMotivoInst && chartOcoMotivoInst._totalMotivoSum) || totalMotivoSum;
+                      if (!refTot) refTot = (chartOcoMotivoInst && chartOcoMotivoInst._totalPrejuizoFiltrado) || totalPrejuizoFiltrado || 1;
+                      var pct = ((val / refTot) * 100).toFixed(1) + "%";
+                      return " " + ctx.label + ": R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " (" + pct + ")";
+                    }
+                  }
+                },
+                datalabels: {
+                  display: function(ctx) {
+                    var v = ctx.dataset.data[ctx.dataIndex];
+                    var refTot = (chartOcoMotivoInst && chartOcoMotivoInst._totalMotivoSum) || totalMotivoSum;
+                    if (!refTot) refTot = (chartOcoMotivoInst && chartOcoMotivoInst._totalPrejuizoFiltrado) || totalPrejuizoFiltrado;
+                    return refTot > 0 && (v / refTot) >= 0.08;
+                  },
+                  color: "#FFFFFF",
+                  font: { weight: "bold", size: 10 },
+                  formatter: function(val) {
+                    var refTot = (chartOcoMotivoInst && chartOcoMotivoInst._totalMotivoSum) || totalMotivoSum;
+                    if (!refTot) refTot = (chartOcoMotivoInst && chartOcoMotivoInst._totalPrejuizoFiltrado) || totalPrejuizoFiltrado;
+                    if (!refTot) return "";
+                    return ((val / refTot) * 100).toFixed(0) + "%";
+                  }
                 }
               }
             }
-          }
-        });
+          });
+          chartOcoMotivoInst._totalMotivoSum = totalMotivoSum;
+          chartOcoMotivoInst._totalPrejuizoFiltrado = totalPrejuizoFiltrado;
+          chartOcoMotivoInst._motivoLabels = motivoLabels;
+        }
       }
 
       // 2. Gráfico por Loja (Bar)
@@ -9681,93 +9703,103 @@
       }
 
       if (chartOcoLojaInst) {
-        chartOcoLojaInst.destroy();
-        chartOcoLojaInst = null;
-      }
-
-      var canvasLoja = document.getElementById("chartOcoLoja");
-      if (canvasLoja) {
-        var ctxLoja = canvasLoja.getContext("2d");
-        chartOcoLojaInst = new Chart(ctxLoja, {
-          type: "bar",
-          data: {
-            labels: lojaLabels.length > 0 ? lojaLabels : ["Sem dados"],
-            datasets: [{
-              label: "Prejuízo (R$)",
-              data: lojaData.length > 0 ? lojaData : [0],
-              backgroundColor: lojaLabels.length > 0 ? lojaBgColors : ["#334155"],
-              borderColor: lojaBorderColors,
-              borderWidth: lojaBorderWidths,
-              borderRadius: 6,
-              maxBarThickness: 38
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: {
-              padding: { top: 28, right: 12, bottom: 6, left: 6 }
+        chartOcoLojaInst._lojaLabels = lojaLabels;
+        chartOcoLojaInst.data.labels = lojaLabels.length > 0 ? lojaLabels : ["Sem dados"];
+        chartOcoLojaInst.data.datasets[0].data = lojaData.length > 0 ? lojaData : [0];
+        chartOcoLojaInst.data.datasets[0].backgroundColor = lojaLabels.length > 0 ? lojaBgColors : ["#334155"];
+        chartOcoLojaInst.data.datasets[0].borderColor = lojaBorderColors;
+        chartOcoLojaInst.data.datasets[0].borderWidth = lojaBorderWidths;
+        chartOcoLojaInst.update();
+      } else {
+        var canvasLoja = document.getElementById("chartOcoLoja");
+        if (canvasLoja) {
+          var ctxLoja = canvasLoja.getContext("2d");
+          chartOcoLojaInst = new Chart(ctxLoja, {
+            type: "bar",
+            data: {
+              labels: lojaLabels.length > 0 ? lojaLabels : ["Sem dados"],
+              datasets: [{
+                label: "Prejuízo (R$)",
+                data: lojaData.length > 0 ? lojaData : [0],
+                backgroundColor: lojaLabels.length > 0 ? lojaBgColors : ["#334155"],
+                borderColor: lojaBorderColors,
+                borderWidth: lojaBorderWidths,
+                borderRadius: 6,
+                maxBarThickness: 38
+              }]
             },
-            onClick: function(evt, elements) {
-              if (!elements || elements.length === 0) return;
-              var idx = elements[0].index;
-              if (lojaLabels[idx] && lojaLabels[idx] !== "Sem dados") {
-                toggleOcoCrossFilter("loja", lojaLabels[idx]);
-              }
-            },
-            onHover: function(evt, elements) {
-              if (evt && evt.native && evt.native.target) {
-                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
-              }
-            },
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function(ctx) {
-                    var val = ctx.raw || 0;
-                    return " Prejuízo: R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              layout: {
+                padding: { top: 28, right: 12, bottom: 6, left: 6 }
+              },
+              onClick: function(evt, elements) {
+                if (!elements || elements.length === 0) return;
+                var idx = elements[0].index;
+                var curLabels = (chartOcoLojaInst && chartOcoLojaInst._lojaLabels) || lojaLabels;
+                if (curLabels[idx] && curLabels[idx] !== "Sem dados") {
+                  var selectedLoja = curLabels[idx];
+                  setTimeout(function() {
+                    toggleOcoCrossFilter("loja", selectedLoja);
+                  }, 10);
+                }
+              },
+              onHover: function(evt, elements) {
+                if (evt && evt.native && evt.native.target) {
+                  evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+                }
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: function(ctx) {
+                      var val = ctx.raw || 0;
+                      return " Prejuízo: R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    }
+                  }
+                },
+                datalabels: {
+                  color: "#93C5FD",
+                  anchor: "end",
+                  align: "top",
+                  offset: 2,
+                  font: { weight: "bold", size: 10 },
+                  formatter: function(val) {
+                    return val > 0 ? "R$" + Math.round(val).toLocaleString("pt-BR") : "";
                   }
                 }
               },
-              datalabels: {
-                color: "#93C5FD",
-                anchor: "end",
-                align: "top",
-                offset: 2,
-                font: { weight: "bold", size: 10 },
-                formatter: function(val) {
-                  return val > 0 ? "R$" + Math.round(val).toLocaleString("pt-BR") : "";
-                }
-              }
-            },
-            scales: {
-              x: {
-                grid: { display: false },
-                ticks: {
-                  color: "#E2E8F0",
-                  font: { size: 10, weight: "600" },
-                  callback: function(val, index) {
-                    var lbl = this.getLabelForValue(val);
-                    return lbl.length > 14 ? (lbl.substring(0, 12) + "..") : lbl;
+              scales: {
+                x: {
+                  grid: { display: false },
+                  ticks: {
+                    color: "#E2E8F0",
+                    font: { size: 10, weight: "600" },
+                    callback: function(val, index) {
+                      var lbl = this.getLabelForValue(val);
+                      return lbl.length > 14 ? (lbl.substring(0, 12) + "..") : lbl;
+                    }
                   }
-                }
-              },
-              y: {
-                beginAtZero: true,
-                grace: "18%",
-                grid: { color: "rgba(255,255,255,0.06)" },
-                ticks: {
-                  color: "#94A3B8",
-                  font: { size: 9.5 },
-                  callback: function(v) {
-                    return "R$ " + (v >= 1000 ? (v / 1000).toFixed(1) + "k" : v);
+                },
+                y: {
+                  beginAtZero: true,
+                  grace: "18%",
+                  grid: { color: "rgba(255,255,255,0.06)" },
+                  ticks: {
+                    color: "#94A3B8",
+                    font: { size: 9.5 },
+                    callback: function(v) {
+                      return "R$ " + (v >= 1000 ? (v / 1000).toFixed(1) + "k" : v);
+                    }
                   }
                 }
               }
             }
-          }
-        });
+          });
+          chartOcoLojaInst._lojaLabels = lojaLabels;
+        }
       }
 
       // 3. Gráfico por Item / Lente (Horizontal Bar - Top Ofensores)
@@ -9808,94 +9840,107 @@
       }
 
       if (chartOcoItemInst) {
-        chartOcoItemInst.destroy();
-        chartOcoItemInst = null;
-      }
-
-      var canvasItem = document.getElementById("chartOcoItem");
-      if (canvasItem) {
-        var ctxItem = canvasItem.getContext("2d");
-        chartOcoItemInst = new Chart(ctxItem, {
-          type: "bar",
-          data: {
-            labels: itemLabels.length > 0 ? itemLabels : ["Sem dados"],
-            datasets: [{
-              label: "Custo Adicional (R$)",
-              data: itemData.length > 0 ? itemData : [0],
-              backgroundColor: itemLabels.length > 0 ? itemBgColors : ["#334155"],
-              borderColor: itemBorderColors,
-              borderWidth: itemBorderWidths,
-              borderRadius: 6,
-              maxBarThickness: 28
-            }]
-          },
-          options: {
-            indexAxis: "y",
-            responsive: true,
-            maintainAspectRatio: false,
-            layout: {
-              padding: { top: 6, right: 60, bottom: 6, left: 6 }
+        chartOcoItemInst._topItems = topItems;
+        chartOcoItemInst._itemLabels = itemLabels;
+        chartOcoItemInst.data.labels = itemLabels.length > 0 ? itemLabels : ["Sem dados"];
+        chartOcoItemInst.data.datasets[0].data = itemData.length > 0 ? itemData : [0];
+        chartOcoItemInst.data.datasets[0].backgroundColor = itemLabels.length > 0 ? itemBgColors : ["#334155"];
+        chartOcoItemInst.data.datasets[0].borderColor = itemBorderColors;
+        chartOcoItemInst.data.datasets[0].borderWidth = itemBorderWidths;
+        chartOcoItemInst.update();
+      } else {
+        var canvasItem = document.getElementById("chartOcoItem");
+        if (canvasItem) {
+          var ctxItem = canvasItem.getContext("2d");
+          chartOcoItemInst = new Chart(ctxItem, {
+            type: "bar",
+            data: {
+              labels: itemLabels.length > 0 ? itemLabels : ["Sem dados"],
+              datasets: [{
+                label: "Custo Adicional (R$)",
+                data: itemData.length > 0 ? itemData : [0],
+                backgroundColor: itemLabels.length > 0 ? itemBgColors : ["#334155"],
+                borderColor: itemBorderColors,
+                borderWidth: itemBorderWidths,
+                borderRadius: 6,
+                maxBarThickness: 28
+              }]
             },
-            onClick: function(evt, elements) {
-              if (!elements || elements.length === 0) return;
-              var idx = elements[0].index;
-              var fullItem = topItems[idx] || itemLabels[idx];
-              if (fullItem && fullItem !== "Sem dados") {
-                toggleOcoCrossFilter("item", fullItem);
-              }
-            },
-            onHover: function(evt, elements) {
-              if (evt && evt.native && evt.native.target) {
-                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
-              }
-            },
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  title: function(items) {
-                    if (!items || items.length === 0) return "";
-                    var idx = items[0].dataIndex;
-                    return topItems[idx] || items[0].label;
-                  },
-                  label: function(ctx) {
-                    var val = ctx.raw || 0;
-                    return " Custo: R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            options: {
+              indexAxis: "y",
+              responsive: true,
+              maintainAspectRatio: false,
+              layout: {
+                padding: { top: 6, right: 60, bottom: 6, left: 6 }
+              },
+              onClick: function(evt, elements) {
+                if (!elements || elements.length === 0) return;
+                var idx = elements[0].index;
+                var curTopItems = (chartOcoItemInst && chartOcoItemInst._topItems) || topItems;
+                var curLabels = (chartOcoItemInst && chartOcoItemInst._itemLabels) || itemLabels;
+                var fullItem = curTopItems[idx] || curLabels[idx];
+                if (fullItem && fullItem !== "Sem dados") {
+                  setTimeout(function() {
+                    toggleOcoCrossFilter("item", fullItem);
+                  }, 10);
+                }
+              },
+              onHover: function(evt, elements) {
+                if (evt && evt.native && evt.native.target) {
+                  evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+                }
+              },
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    title: function(items) {
+                      if (!items || items.length === 0) return "";
+                      var idx = items[0].dataIndex;
+                      var curTopItems = (chartOcoItemInst && chartOcoItemInst._topItems) || topItems;
+                      return curTopItems[idx] || items[0].label;
+                    },
+                    label: function(ctx) {
+                      var val = ctx.raw || 0;
+                      return " Custo: R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    }
+                  }
+                },
+                datalabels: {
+                  color: "#6EE7B7",
+                  anchor: "end",
+                  align: "right",
+                  offset: 4,
+                  clip: false,
+                  font: { weight: "bold", size: 9.5 },
+                  formatter: function(val) {
+                    return val > 0 ? "R$" + Math.round(val).toLocaleString("pt-BR") : "";
                   }
                 }
               },
-              datalabels: {
-                color: "#6EE7B7",
-                anchor: "end",
-                align: "right",
-                offset: 4,
-                clip: false,
-                font: { weight: "bold", size: 9.5 },
-                formatter: function(val) {
-                  return val > 0 ? "R$" + Math.round(val).toLocaleString("pt-BR") : "";
-                }
-              }
-            },
-            scales: {
-              x: {
-                beginAtZero: true,
-                grace: "20%",
-                grid: { color: "rgba(255,255,255,0.06)" },
-                ticks: {
-                  color: "#94A3B8",
-                  font: { size: 9.5 },
-                  callback: function(v) {
-                    return "R$ " + (v >= 1000 ? (v / 1000).toFixed(1) + "k" : v);
+              scales: {
+                x: {
+                  beginAtZero: true,
+                  grace: "20%",
+                  grid: { color: "rgba(255,255,255,0.06)" },
+                  ticks: {
+                    color: "#94A3B8",
+                    font: { size: 9.5 },
+                    callback: function(v) {
+                      return "R$ " + (v >= 1000 ? (v / 1000).toFixed(1) + "k" : v);
+                    }
                   }
+                },
+                y: {
+                  grid: { display: false },
+                  ticks: { color: "#F8FAFC", font: { size: 9.5 } }
                 }
-              },
-              y: {
-                grid: { display: false },
-                ticks: { color: "#F8FAFC", font: { size: 9.5 } }
               }
             }
-          }
-        });
+          });
+          chartOcoItemInst._topItems = topItems;
+          chartOcoItemInst._itemLabels = itemLabels;
+        }
       }
     }
 
