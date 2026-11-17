@@ -3065,6 +3065,90 @@
             </div>
           </div>
 
+          <!-- DASHBOARD DE PREJUÍZO (OCORRÊNCIAS) -->
+          <div id="ocoDashboardSection" style="margin-top: 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+              <div style="font-weight:700; font-size:15px; color:var(--text-main); display:flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-chart-pie" style="color:var(--danger);"></i> Dashboard de Prejuízo & Custos de Retrabalho
+              </div>
+              <div style="font-size:12px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+                <span class="live-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981;"></span>
+                <span>Atualização dinâmica em tempo real pelos filtros</span>
+              </div>
+            </div>
+
+            <!-- KPIs de Prejuízo -->
+            <div class="grid-4" style="margin-bottom: 16px;">
+              <div class="kpi-card" style="border-left: 4px solid var(--danger);">
+                <div class="kpi-icon" style="background-color:rgba(239, 68, 68, 0.15); color:var(--danger);"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div>
+                  <div class="kpi-label" style="color:var(--danger); font-weight:700;">PREJUÍZO TOTAL (CUSTOS)</div>
+                  <div class="kpi-val" id="kpiOcoPrejuizoTotal" style="color:var(--danger);">R$ 0,00</div>
+                </div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-icon" style="background-color:rgba(59, 130, 246, 0.15); color:var(--primary);"><i class="fa-solid fa-clipboard-list"></i></div>
+                <div>
+                  <div class="kpi-label">TOTAL DE OCORRÊNCIAS</div>
+                  <div class="kpi-val" id="kpiOcoTotalQtd">0</div>
+                </div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-icon" style="background-color:rgba(245, 158, 11, 0.15); color:var(--warning);"><i class="fa-solid fa-calculator"></i></div>
+                <div>
+                  <div class="kpi-label">PREJUÍZO MÉDIO / FALHA</div>
+                  <div class="kpi-val" id="kpiOcoTicketMedio">R$ 0,00</div>
+                </div>
+              </div>
+
+              <div class="kpi-card">
+                <div class="kpi-icon" style="background-color:rgba(139, 92, 246, 0.15); color:#8b5cf6;"><i class="fa-solid fa-fire"></i></div>
+                <div>
+                  <div class="kpi-label">MAIOR OFENSOR (MOTIVO)</div>
+                  <div class="kpi-val" id="kpiOcoMaiorMotivo" style="font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px;">-</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Gráficos de Prejuízo (Motivo, Loja, Item) -->
+            <div class="grid-3" style="margin-bottom: 20px;">
+              <!-- Gráfico 1: Prejuízo por Motivo -->
+              <div class="card" style="margin-bottom: 0;">
+                <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span><i class="fa-solid fa-chart-pie" style="color:#ef4444;"></i> Prejuízo por Motivo</span>
+                  <span id="badgeOcoMotivoCount" style="font-size:11px; background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:10px; color:var(--text-muted);">0 motivos</span>
+                </div>
+                <div style="height: 260px; position: relative; display: flex; justify-content: center; align-items: center;">
+                  <canvas id="chartOcoMotivo"></canvas>
+                </div>
+              </div>
+
+              <!-- Gráfico 2: Prejuízo por Loja -->
+              <div class="card" style="margin-bottom: 0;">
+                <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span><i class="fa-solid fa-store" style="color:#3b82f6;"></i> Prejuízo por Loja</span>
+                  <span id="badgeOcoLojaCount" style="font-size:11px; background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:10px; color:var(--text-muted);">0 lojas</span>
+                </div>
+                <div style="height: 260px; position: relative;">
+                  <canvas id="chartOcoLoja"></canvas>
+                </div>
+              </div>
+
+              <!-- Gráfico 3: Prejuízo por Item / Lente -->
+              <div class="card" style="margin-bottom: 0;">
+                <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span><i class="fa-solid fa-glasses" style="color:#10b981;"></i> Prejuízo por Item / Lente</span>
+                  <span id="badgeOcoItemCount" style="font-size:11px; background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:10px; color:var(--text-muted);">Top itens</span>
+                </div>
+                <div style="height: 260px; position: relative;">
+                  <canvas id="chartOcoItem"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Listagem de Ocorrências -->
           <div class="card" style="margin-top: 20px;">
             <div class="card-title" style="display:flex; justify-content:space-between; align-items:center; width:100%;">
@@ -3104,6 +3188,29 @@
 
             <!-- Paginação -->
             <div class="pagination" id="ocorrenciasPagination" style="margin-top: 15px;"></div>
+
+            <!-- Contador Objetivo da Soma do Prejuízo Total (Base Completa Filtrada) -->
+            <div id="ocoTotalSummaryFooter" style="margin-top: 15px; padding: 14px 20px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+              <div style="display:flex; align-items:center; gap:12px; font-size:13.5px; color:var(--text-main);">
+                <span style="display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:8px; background:rgba(239,68,68,0.2); color:var(--danger); font-size:16px;">
+                  <i class="fa-solid fa-calculator"></i>
+                </span>
+                <div>
+                  <div style="font-weight:700;">Consolidado Geral Filtrado:</div>
+                  <div id="ocoFooterQtdCount" style="color:var(--text-muted); font-size:12px;">0 ocorrência(s) encontrada(s)</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:24px; flex-wrap:wrap;">
+                <div style="text-align:right;">
+                  <div style="font-size:11px; text-transform:uppercase; font-weight:700; color:var(--text-muted); letter-spacing:0.5px;">Custo Médio / Falha:</div>
+                  <div id="ocoFooterTicketMedio" style="font-size:15px; font-weight:700; color:var(--warning);">R$ 0,00</div>
+                </div>
+                <div style="text-align:right; border-left:1px solid rgba(255,255,255,0.1); padding-left:20px;">
+                  <div style="font-size:11.5px; text-transform:uppercase; font-weight:700; color:var(--danger); letter-spacing:0.5px;">Prejuízo Total Filtrado:</div>
+                  <div id="ocoFooterPrejuizoTotal" style="font-size:22px; font-weight:800; color:var(--danger); font-family:monospace; text-shadow:0 0 12px rgba(239,68,68,0.3);">R$ 0,00</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -5435,6 +5542,10 @@
     var chartLeadLojasInst = null;
     var chartLeadCampanhasInst = null;
     var chartLeadPagamentosInst = null;
+    var chartOcoMotivoInst = null;
+    var chartOcoLojaInst = null;
+    var chartOcoItemInst = null;
+    var currentFilteredOcorrencias = [];
 
     function renderPaginationControls(containerId, currentPage, totalPages, onPageChangeName) {
       var container = document.getElementById(containerId);
@@ -5722,6 +5833,10 @@
     var chartLeadLojasInst = null;
     var chartLeadCampanhasInst = null;
     var chartLeadPagamentosInst = null;
+    var chartOcoMotivoInst = null;
+    var chartOcoLojaInst = null;
+    var chartOcoItemInst = null;
+    var currentFilteredOcorrencias = [];
     function setupUppercaseInputs() {
       var ids = ['clientNome', 'orcClienteNome', 'userNome', 'prodNome', 'userUsername', 'campaignNome', 'campaignAro', 'campaignLente', 'leadNome'];
       ids.forEach(function(id) {
@@ -8967,6 +9082,88 @@
         });
       }
       
+      // Salvar lista filtrada globalmente para sincronização de exportação
+      currentFilteredOcorrencias = filtered;
+
+      // Calcular consolidados de prejuízo e agrupamentos para Dashboard e Totalizador
+      var totalPrejuizoFiltrado = 0;
+      var prejuizoPorMotivo = {};
+      var prejuizoPorLoja = {};
+      var prejuizoPorItem = {};
+
+      for (var f = 0; f < filtered.length; f++) {
+        var oItem = filtered[f];
+        var custo = Number(oItem.custoAdicional || oItem.custo_adicional) || 0;
+        totalPrejuizoFiltrado += custo;
+
+        var mKey = (oItem.motivo || "Não informado").trim();
+        prejuizoPorMotivo[mKey] = (prejuizoPorMotivo[mKey] || 0) + custo;
+
+        var lKey = (oItem.loja || "Não informada").trim();
+        prejuizoPorLoja[lKey] = (prejuizoPorLoja[lKey] || 0) + custo;
+
+        var dObj = oItem.detalhes || {};
+        var itemKey = (dObj.lente || "Lente não informada").trim();
+        prejuizoPorItem[itemKey] = (prejuizoPorItem[itemKey] || 0) + custo;
+      }
+
+      var ticketMedioPrejuizo = filtered.length > 0 ? (totalPrejuizoFiltrado / filtered.length) : 0;
+
+      // Identificar o maior ofensor por motivo
+      var topMotivoNome = "-";
+      var topMotivoVal = 0;
+      for (var mk in prejuizoPorMotivo) {
+        if (prejuizoPorMotivo[mk] > topMotivoVal) {
+          topMotivoVal = prejuizoPorMotivo[mk];
+          topMotivoNome = mk;
+        }
+      }
+
+      var fmtBRL = function(v) {
+        return "R$ " + (Number(v) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      };
+
+      // Atualizar Cards de KPIs do Dashboard
+      var elKpiTotal = document.getElementById("kpiOcoPrejuizoTotal");
+      if (elKpiTotal) elKpiTotal.textContent = fmtBRL(totalPrejuizoFiltrado);
+      
+      var elKpiQtd = document.getElementById("kpiOcoTotalQtd");
+      if (elKpiQtd) elKpiQtd.textContent = filtered.length;
+
+      var elKpiMedio = document.getElementById("kpiOcoTicketMedio");
+      if (elKpiMedio) elKpiMedio.textContent = fmtBRL(ticketMedioPrejuizo);
+
+      var elKpiOfensor = document.getElementById("kpiOcoMaiorMotivo");
+      if (elKpiOfensor) {
+        elKpiOfensor.textContent = topMotivoNome;
+        elKpiOfensor.title = topMotivoNome + (topMotivoVal > 0 ? " (" + fmtBRL(topMotivoVal) + ")" : "");
+      }
+
+      // Atualizar Badges de contagem dos gráficos
+      var bMot = document.getElementById("badgeOcoMotivoCount");
+      if (bMot) bMot.textContent = Object.keys(prejuizoPorMotivo).length + " motivos";
+      var bLoj = document.getElementById("badgeOcoLojaCount");
+      if (bLoj) bLoj.textContent = Object.keys(prejuizoPorLoja).length + " lojas";
+      var bItm = document.getElementById("badgeOcoItemCount");
+      if (bItm) bItm.textContent = Object.keys(prejuizoPorItem).length + " itens";
+
+      // Atualizar Contador Objetivo no Rodapé da Paginação (SOMA TOTAL DOS LANÇAMENTOS FILTRADOS)
+      var elFootQtd = document.getElementById("ocoFooterQtdCount");
+      if (elFootQtd) {
+        elFootQtd.textContent = filtered.length + " ocorrência" + (filtered.length === 1 ? "" : "s") + " no filtro";
+      }
+      var elFootMedio = document.getElementById("ocoFooterTicketMedio");
+      if (elFootMedio) {
+        elFootMedio.textContent = fmtBRL(ticketMedioPrejuizo);
+      }
+      var elFootTotal = document.getElementById("ocoFooterPrejuizoTotal");
+      if (elFootTotal) {
+        elFootTotal.textContent = fmtBRL(totalPrejuizoFiltrado);
+      }
+
+      // Atualizar Gráficos Chart.js do Dashboard de Prejuízo
+      updateOcorrenciasCharts(prejuizoPorMotivo, prejuizoPorLoja, prejuizoPorItem, totalPrejuizoFiltrado);
+
       var itemsPerPage = 25;
       var totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
       
@@ -9059,70 +9256,238 @@
       renderPaginationControls("ocorrenciasPagination", currentPageOcorrencias, totalPages, "changePageOcorrencias");
     }
 
-    function exportarOcorrenciasPDF() {
-      if (!appData.ocorrencias || appData.ocorrencias.length === 0) {
-        alert("Nenhuma ocorrência para exportar.");
-        return;
+    // Renderização dinâmica dos 3 gráficos de Prejuízo do Dashboard
+    function updateOcorrenciasCharts(prejuizoPorMotivo, prejuizoPorLoja, prejuizoPorItem, totalPrejuizoFiltrado) {
+      if (typeof Chart === 'undefined') return;
+
+      // 1. Gráfico por Motivo (Doughnut)
+      var motivoKeys = Object.keys(prejuizoPorMotivo || {});
+      motivoKeys.sort(function(a, b) {
+        return (prejuizoPorMotivo[b] || 0) - (prejuizoPorMotivo[a] || 0);
+      });
+
+      var topMotivos = motivoKeys.slice(0, 5);
+      var motivoLabels = [];
+      var motivoData = [];
+      var outrosMotivosVal = 0;
+
+      for (var i = 0; i < topMotivos.length; i++) {
+        var k = topMotivos[i];
+        motivoLabels.push(k);
+        motivoData.push(prejuizoPorMotivo[k] || 0);
       }
-      
-      var buscaVal = document.getElementById("ocoBuscaTexto").value.toLowerCase().trim();
-      var motivoVal = document.getElementById("ocoFiltroMotivo").value;
-      var lojaVal = document.getElementById("ocoFiltroLoja").value;
-      var startVal = document.getElementById("ocoFiltroDataInicio").value;
-      var endVal = document.getElementById("ocoFiltroDataFim").value;
-      var vendVal = document.getElementById("ocoFiltroVendedor").value;
-      
-      var parseLocalDate = function(d) {
-        if (!d) return 0;
-        var str = d.toString().trim().split(' ')[0];
-        var parts = str.indexOf('/') !== -1 ? str.split('/') : str.split('-');
-        if (parts.length !== 3) return 0;
-        if (str.indexOf('/') !== -1) {
-          return new Date(parts[2], parts[1] - 1, parts[0]).getTime();
-        } else {
-          return new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+      if (motivoKeys.length > 5) {
+        for (var j = 5; j < motivoKeys.length; j++) {
+          outrosMotivosVal += (prejuizoPorMotivo[motivoKeys[j]] || 0);
         }
-      };
-      
-      var list = appData.ocorrencias.slice();
-      
-      if (loggedUser && loggedUser.loja && loggedUser.loja !== 'Todos') {
-        list = list.filter(function(o) { return o.loja === loggedUser.loja; });
+        if (outrosMotivosVal > 0) {
+          motivoLabels.push("Outros Motivos");
+          motivoData.push(outrosMotivosVal);
+        }
       }
-      
-      if (buscaVal) {
-        list = list.filter(function(o) {
-          var details = o.detalhes || {};
-          var text = [
-            (o.os || ""),
-            (o.loja || ""),
-            (o.vendedor || ""),
-            (o.clienteNome || o.cliente_nome || ""),
-            (o.motivo || ""),
-            (details.lab || ""),
-            (details.lente || ""),
-            (details.tratamento || ""),
-            (details.obs || "")
-          ].join(" ").toLowerCase();
-          return text.indexOf(buscaVal) !== -1;
+
+      if (chartOcoMotivoInst) {
+        chartOcoMotivoInst.destroy();
+        chartOcoMotivoInst = null;
+      }
+
+      var canvasMotivo = document.getElementById("chartOcoMotivo");
+      if (canvasMotivo) {
+        var ctxMotivo = canvasMotivo.getContext("2d");
+        var motivoColors = ['#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6', '#10B981', '#6B7280'];
+        
+        chartOcoMotivoInst = new Chart(ctxMotivo, {
+          type: 'doughnut',
+          data: {
+            labels: motivoLabels.length > 0 ? motivoLabels : ['Sem dados'],
+            datasets: [{
+              data: motivoData.length > 0 ? motivoData : [0],
+              backgroundColor: motivoLabels.length > 0 ? motivoColors.slice(0, motivoLabels.length) : ['#334155'],
+              borderWidth: 2,
+              borderColor: '#1e293b'
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'right',
+                labels: { color: '#F8FAFC', font: { size: 10, family: 'sans-serif' }, boxWidth: 12 }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    var val = ctx.raw || 0;
+                    var pct = totalPrejuizoFiltrado > 0 ? ((val / totalPrejuizoFiltrado) * 100).toFixed(1) + '%' : '0%';
+                    return ' ' + ctx.label + ': R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + pct + ')';
+                  }
+                }
+              },
+              datalabels: {
+                display: function(ctx) {
+                  var v = ctx.dataset.data[ctx.dataIndex];
+                  return totalPrejuizoFiltrado > 0 && (v / totalPrejuizoFiltrado) >= 0.08;
+                },
+                color: '#FFFFFF',
+                font: { weight: 'bold', size: 10 },
+                formatter: function(val) {
+                  if (!totalPrejuizoFiltrado) return '';
+                  return ((val / totalPrejuizoFiltrado) * 100).toFixed(0) + '%';
+                }
+              }
+            }
+          }
         });
       }
-      if (motivoVal && motivoVal !== 'Todos') {
-        list = list.filter(function(o) { return o.motivo === motivoVal; });
+
+      // 2. Gráfico por Loja (Bar)
+      var lojaKeys = Object.keys(prejuizoPorLoja || {});
+      lojaKeys.sort(function(a, b) {
+        return (prejuizoPorLoja[b] || 0) - (prejuizoPorLoja[a] || 0);
+      });
+
+      var lojaLabels = [];
+      var lojaData = [];
+      for (var l = 0; l < lojaKeys.length; l++) {
+        var lk = lojaKeys[l];
+        lojaLabels.push(lk);
+        lojaData.push(prejuizoPorLoja[lk] || 0);
       }
-      if (lojaVal && lojaVal !== 'Todos') {
-        list = list.filter(function(o) { return o.loja === lojaVal; });
+
+      if (chartOcoLojaInst) {
+        chartOcoLojaInst.destroy();
+        chartOcoLojaInst = null;
       }
-      if (vendVal && vendVal !== 'Todos') {
-        list = list.filter(function(o) { return o.vendedor === vendVal; });
+
+      var canvasLoja = document.getElementById("chartOcoLoja");
+      if (canvasLoja) {
+        var ctxLoja = canvasLoja.getContext("2d");
+        chartOcoLojaInst = new Chart(ctxLoja, {
+          type: 'bar',
+          data: {
+            labels: lojaLabels.length > 0 ? lojaLabels : ['Sem dados'],
+            datasets: [{
+              label: 'Prejuízo (R$)',
+              data: lojaData.length > 0 ? lojaData : [0],
+              backgroundColor: '#3B82F6',
+              borderRadius: 6,
+              maxBarThickness: 36
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(ctx) {
+                    var val = ctx.raw || 0;
+                    return ' Prejuízo: R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  }
+                }
+              },
+              datalabels: {
+                color: '#93C5FD',
+                anchor: 'end',
+                align: 'top',
+                offset: 2,
+                font: { weight: 'bold', size: 10 },
+                formatter: function(val) {
+                  return val > 0 ? 'R$' + Math.round(val) : '';
+                }
+              }
+            },
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8', font: { size: 10 } } },
+              y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8', font: { size: 10 } }, beginAtZero: true }
+            }
+          }
+        });
       }
-      if (startVal) {
-        var startLimit = parseLocalDate(startVal);
-        list = list.filter(function(o) { return parseLocalDate(o.data) >= startLimit; });
+
+      // 3. Gráfico por Item / Lente (Horizontal Bar - Top Ofensores)
+      var itemKeys = Object.keys(prejuizoPorItem || {});
+      itemKeys.sort(function(a, b) {
+        return (prejuizoPorItem[b] || 0) - (prejuizoPorItem[a] || 0);
+      });
+
+      var topItems = itemKeys.slice(0, 6);
+      var itemLabels = [];
+      var itemData = [];
+      for (var it = 0; it < topItems.length; it++) {
+        var itk = topItems[it];
+        var shortLabel = itk.length > 22 ? (itk.substring(0, 20) + '...') : itk;
+        itemLabels.push(shortLabel);
+        itemData.push(prejuizoPorItem[itk] || 0);
       }
-      if (endVal) {
-        var endLimit = parseLocalDate(endVal) + 86399999;
-        list = list.filter(function(o) { return parseLocalDate(o.data) <= endLimit; });
+
+      if (chartOcoItemInst) {
+        chartOcoItemInst.destroy();
+        chartOcoItemInst = null;
+      }
+
+      var canvasItem = document.getElementById("chartOcoItem");
+      if (canvasItem) {
+        var ctxItem = canvasItem.getContext("2d");
+        chartOcoItemInst = new Chart(ctxItem, {
+          type: 'bar',
+          data: {
+            labels: itemLabels.length > 0 ? itemLabels : ['Sem dados'],
+            datasets: [{
+              label: 'Custo Adicional (R$)',
+              data: itemData.length > 0 ? itemData : [0],
+              backgroundColor: '#10B981',
+              borderRadius: 6,
+              maxBarThickness: 28
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: function(items) {
+                    if (!items || items.length === 0) return '';
+                    var idx = items[0].dataIndex;
+                    return topItems[idx] || items[0].label;
+                  },
+                  label: function(ctx) {
+                    var val = ctx.raw || 0;
+                    return ' Custo: R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  }
+                }
+              },
+              datalabels: {
+                color: '#6EE7B7',
+                anchor: 'end',
+                align: 'right',
+                offset: 4,
+                font: { weight: 'bold', size: 9.5 },
+                formatter: function(val) {
+                  return val > 0 ? 'R$' + Math.round(val) : '';
+                }
+              }
+            },
+            scales: {
+              x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8', font: { size: 9.5 } }, beginAtZero: true },
+              y: { grid: { display: false }, ticks: { color: '#F8FAFC', font: { size: 9.5 } } }
+            }
+          }
+        });
+      }
+    }
+
+    // Exportação de Relatório PDF de Ocorrências com layout de impressão de alta qualidade
+    function exportarOcorrenciasPDF() {
+      var list = (currentFilteredOcorrencias || []).slice();
+      if (!list || list.length === 0) {
+        alert("Nenhuma ocorrência encontrada para exportar com os filtros selecionados.");
+        return;
       }
       
       var checkedBoxes = document.querySelectorAll(".ocorrencia-row-check:checked");
@@ -9138,55 +9503,192 @@
         });
       }
       
+      var parseLocalDate = function(d) {
+        if (!d) return 0;
+        var str = d.toString().trim().split(' ')[0];
+        var parts = str.indexOf('/') !== -1 ? str.split('/') : str.split('-');
+        if (parts.length !== 3) return 0;
+        if (str.indexOf('/') !== -1) {
+          return new Date(parts[2], parts[1] - 1, parts[0]).getTime();
+        } else {
+          return new Date(parts[0], parts[1] - 1, parts[2]).getTime();
+        }
+      };
+      
       list.sort(function(a, b) {
         var tA = parseLocalDate(a.data);
         var tB = parseLocalDate(b.data);
         if (tA !== tB) return tB - tA;
         return (b.id || 0) - (a.id || 0);
       });
+
+      var sumPrejuizo = 0;
+      for (var s = 0; s < list.length; s++) {
+        sumPrejuizo += Number(list[s].custoAdicional || list[s].custo_adicional) || 0;
+      }
+      var mediaPrejuizo = list.length > 0 ? (sumPrejuizo / list.length) : 0;
+
+      var fInicio = document.getElementById("ocoFiltroDataInicio") ? document.getElementById("ocoFiltroDataInicio").value : "";
+      var fFim = document.getElementById("ocoFiltroDataFim") ? document.getElementById("ocoFiltroDataFim").value : "";
+      var fLoja = document.getElementById("ocoFiltroLoja") ? document.getElementById("ocoFiltroLoja").value : "Todos";
+      var fVend = document.getElementById("ocoFiltroVendedor") ? document.getElementById("ocoFiltroVendedor").value : "Todos";
+      var fMotivo = document.getElementById("ocoFiltroMotivo") ? document.getElementById("ocoFiltroMotivo").value : "Todos";
+      var fBusca = document.getElementById("ocoBuscaTexto") ? document.getElementById("ocoBuscaTexto").value.trim() : "";
       
-      var headers = ["Data", "OS", "Loja", "Cliente", "Vendedor", "Motivo", "Custo Adicional"];
-      var rows = list.map(function(o) {
-        return [
-          o.data || "",
-          o.os || "",
-          o.loja || "",
-          o.clienteNome || o.cliente_nome || "",
-          o.vendedor || "",
-          o.motivo || "",
-          "R$ " + (Number(o.custoAdicional || o.custo_adicional) || 0).toFixed(2)
-        ];
-      });
+      var filtroDesc = [];
+      if (fInicio || fFim) {
+        var pStr = "Período: ";
+        if (fInicio) pStr += fInicio.split('-').reverse().join('/');
+        if (fFim) pStr += " até " + fFim.split('-').reverse().join('/');
+        filtroDesc.push(pStr);
+      }
+      if (fLoja && fLoja !== "Todos") filtroDesc.push("Loja: " + fLoja);
+      if (fVend && fVend !== "Todos") filtroDesc.push("Vendedor: " + fVend);
+      if (fMotivo && fMotivo !== "Todos") filtroDesc.push("Motivo: " + fMotivo);
+      if (fBusca) filtroDesc.push('Busca: "' + fBusca + '"');
+      if (selectedIds.length > 0) filtroDesc.push(selectedIds.length + " item(ns) selecionado(s) manualmente");
+
+      var printWindow = window.open("", "_blank");
       
-      showLoading("Gerando PDF...");
+      var html = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+        '<title>Relatório de Ocorrências e Prejuízo - Óticas Gestão</title>' +
+        '<style>' +
+        '@page { size: A4 landscape; margin: 8mm; }' +
+        'body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1e293b; margin: 0; padding: 14px; font-size: 10px; line-height: 1.3; }' +
+        '.no-print { margin-bottom: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: flex; gap: 10px; align-items: center; }' +
+        '.btn { padding: 8px 16px; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; font-size: 12px; }' +
+        '.btn-print { background: #2563eb; color: #fff; }' +
+        '.btn-close { background: #e2e8f0; color: #334155; }' +
+        '.header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #ef4444; padding-bottom: 10px; margin-bottom: 12px; }' +
+        '.title-main { font-size: 18px; font-weight: 800; color: #0f172a; text-transform: uppercase; letter-spacing: -0.5px; }' +
+        '.title-sub { font-size: 12px; font-weight: 600; color: #ef4444; margin-top: 2px; }' +
+        '.meta-info { font-size: 9.5px; color: #64748b; text-align: right; }' +
+        '.kpis-bar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }' +
+        '.kpi-box { padding: 8px 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; border-left: 4px solid #ef4444; }' +
+        '.kpi-lbl { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #64748b; }' +
+        '.kpi-val { font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px; }' +
+        '.kpi-danger { color: #dc2626 !important; }' +
+        '.filters-badge { font-size: 9px; color: #475569; background: #f1f5f9; padding: 6px 10px; border-radius: 4px; margin-bottom: 12px; border: 1px solid #e2e8f0; }' +
+        'table { width: 100%; border-collapse: collapse; font-size: 9px; table-layout: fixed; }' +
+        'th, td { border: 1px solid #cbd5e1; padding: 4.5px 6px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
+        'th { background-color: #0f172a; color: #ffffff; font-weight: 700; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.3px; }' +
+        'tr:nth-child(even) { background-color: #f8fafc; }' +
+        '.text-right { text-align: right; }' +
+        '.text-center { text-align: center; }' +
+        '.col-data { width: 65px; }' +
+        '.col-os { width: 75px; font-weight: 700; }' +
+        '.col-loja { width: 90px; }' +
+        '.col-cli { width: 130px; }' +
+        '.col-vend { width: 90px; }' +
+        '.col-motivo { width: 140px; }' +
+        '.col-lente { width: 160px; }' +
+        '.col-lab { width: 90px; }' +
+        '.col-custo { width: 85px; font-weight: 800; color: #dc2626; }' +
+        'tfoot tr td { background: #f1f5f9; font-weight: 800; font-size: 10.5px; border-top: 2px solid #0f172a; }' +
+        '@media print { .no-print { display: none !important; } body { padding: 0; } }' +
+        '</style></head><body>' +
+        '<div class="no-print">' +
+          '<button class="btn btn-print" onclick="window.print()">🖨️ Imprimir / Salvar em PDF</button>' +
+          '<button class="btn btn-close" onclick="window.close()">Fechar</button>' +
+          '<span style="font-size:11px; color:#64748b; margin-left:auto;">Dica: selecione "Salvar como PDF" no destino da impressora.</span>' +
+        '</div>' +
+        '<div class="header">' +
+          '<div>' +
+            '<div class="title-main">Óticas Gestão Integrada</div>' +
+            '<div class="title-sub">Relatório de Ocorrências & Custos Adicionais (Prejuízo)</div>' +
+          '</div>' +
+          '<div class="meta-info">' +
+            '<div><strong>Emissão:</strong> ' + new Date().toLocaleString("pt-BR") + '</div>' +
+            '<div><strong>Usuário:</strong> ' + (loggedUser ? (loggedUser.nome || loggedUser.username) : "Sistema") + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="filters-badge">' +
+          '<strong>Filtros Ativos:</strong> ' + (filtroDesc.length > 0 ? filtroDesc.join(" | ") : "Todas as ocorrências registradas (Sem filtros)") +
+        '</div>' +
+        '<div class="kpis-bar">' +
+          '<div class="kpi-box">' +
+            '<div class="kpi-lbl">Prejuízo Total Filtrado</div>' +
+            '<div class="kpi-val kpi-danger">R$ ' + sumPrejuizo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
+          '</div>' +
+          '<div class="kpi-box" style="border-left-color:#3b82f6;">' +
+            '<div class="kpi-lbl">Total de Ocorrências</div>' +
+            '<div class="kpi-val">' + list.length + ' ocorrência(s)</div>' +
+          '</div>' +
+          '<div class="kpi-box" style="border-left-color:#f59e0b;">' +
+            '<div class="kpi-lbl">Custo Médio / Falha</div>' +
+            '<div class="kpi-val">R$ ' + mediaPrejuizo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<table>' +
+          '<thead>' +
+            '<tr>' +
+              '<th class="col-data text-center">Data</th>' +
+              '<th class="col-os text-center">OS Venda</th>' +
+              '<th class="col-loja">Loja</th>' +
+              '<th class="col-cli">Cliente</th>' +
+              '<th class="col-vend">Vendedor</th>' +
+              '<th class="col-motivo">Motivo do Erro</th>' +
+              '<th class="col-lente">Lente Ocorrência</th>' +
+              '<th class="col-lab">Laboratório</th>' +
+              '<th class="col-custo text-right">Prejuízo (R$)</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>';
+          
+      for (var r = 0; r < list.length; r++) {
+        var item = list[r];
+        var d = item.detalhes || {};
+        var bInfo = "";
+        if (d.bonificacao) bInfo = " (Bonif.)";
+        else if (d.cortesia) bInfo = " (Cortesia)";
+        
+        var motText = (item.motivo || "-") + bInfo;
+        var lenteText = d.lente || "-";
+        if (d.tratamento && !d.semTratamento) lenteText += " + " + d.tratamento;
+        
+        var cVal = Number(item.custoAdicional || item.custo_adicional) || 0;
+        
+        html += '<tr>' +
+          '<td class="text-center">' + (item.data || "-") + '</td>' +
+          '<td class="text-center"><strong>' + (item.os || "-") + '</strong></td>' +
+          '<td>' + (item.loja || "-") + '</td>' +
+          '<td>' + (item.clienteNome || item.cliente_nome || "-") + '</td>' +
+          '<td>' + (item.vendedor || "-") + '</td>' +
+          '<td>' + motText + '</td>' +
+          '<td>' + lenteText + '</td>' +
+          '<td>' + (d.lab || "-") + '</td>' +
+          '<td class="text-right" style="font-weight:700; color:#dc2626;">R$ ' + cVal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td>' +
+        '</tr>';
+      }
       
-      var pdfWindow = window.open("", "_blank");
+      html += '</tbody>' +
+        '<tfoot>' +
+          '<tr>' +
+            '<td colspan="8" class="text-right">TOTAL GERAL DO PREJUÍZO (CUSTOS ADICIONAIS):</td>' +
+            '<td class="text-right" style="color:#dc2626; font-size:11px;">R$ ' + sumPrejuizo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</td>' +
+          '</tr>' +
+        '</tfoot>' +
+      '</table>' +
+      '<div style="text-align:center; margin-top:14px; font-size:8px; color:#94a3b8;">Óticas Gestão Integrada • Sistema de Auditoria e Controle de Qualidade</div>' +
+      '<script>window.onload = function() { setTimeout(function(){ window.print(); }, 400); };<\/script>' +
+      '</body></html>';
       
-      if (typeof google === 'undefined' || !google.script) {
-        setTimeout(function() {
-          hideLoading();
-          pdfWindow.close();
-          alert("PDF gerado com sucesso! (Modo Mock - link de download simulado)");
-        }, 1000);
+      if (!printWindow) {
+        var blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        var blobUrl = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = blobUrl;
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(blobUrl); }, 30000);
         return;
       }
       
-      google.script.run
-        .withSuccessHandler(function(res) {
-          hideLoading();
-          if (res.success) {
-            pdfWindow.location.href = res.url;
-          } else {
-            pdfWindow.close();
-            alert("Erro ao gerar PDF: " + res.error);
-          }
-        })
-        .withFailureHandler(function(err) {
-          hideLoading();
-          pdfWindow.close();
-          alert("Erro no servidor: " + err.toString());
-        })
-        .generateTableReportPDF("Controle de Ocorrências (Erros Loja/Laboratório)", headers, rows, true, loggedUser ? loggedUser.username : "");
+      printWindow.document.open();
+      printWindow.document.write(html);
+      printWindow.document.close();
     }
 
     // Renderizar Log de Vendas
@@ -9493,7 +9995,24 @@
           hideLoading();
           if (!checkSession(res)) return;
           if (res.success) {
-            window.open(res.url, '_blank');
+            if (res.html) {
+              var w = window.open('', '_blank');
+              if (w) {
+                w.document.open();
+                w.document.write(res.html);
+                w.document.close();
+              }
+            } else if (res.url && res.url.startsWith('data:')) {
+              var w = window.open('', '_blank');
+              if (w) {
+                var decoded = decodeURIComponent(res.url.replace(/^data:text\/html;charset=utf-8,/, ''));
+                w.document.open();
+                w.document.write(decoded);
+                w.document.close();
+              }
+            } else {
+              window.open(res.url, '_blank');
+            }
           } else {
             alert("Erro ao gerar PDF: " + res.error);
           }
@@ -9659,7 +10178,18 @@
             return;
           }
           if (res.success) {
-            pdfWindow.location.href = res.url;
+            if (res.html) {
+              pdfWindow.document.open();
+              pdfWindow.document.write(res.html);
+              pdfWindow.document.close();
+            } else if (res.url && res.url.startsWith('data:')) {
+              var decoded = decodeURIComponent(res.url.replace(/^data:text\/html;charset=utf-8,/, ''));
+              pdfWindow.document.open();
+              pdfWindow.document.write(decoded);
+              pdfWindow.document.close();
+            } else {
+              pdfWindow.location.href = res.url;
+            }
           } else {
             pdfWindow.close();
             alert("Erro ao consolidar resumo: " + res.error);
@@ -13982,7 +14512,18 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
-            pdfWindow.location.href = res.url;
+            if (res.html) {
+              pdfWindow.document.open();
+              pdfWindow.document.write(res.html);
+              pdfWindow.document.close();
+            } else if (res.url && res.url.startsWith('data:')) {
+              var decoded = decodeURIComponent(res.url.replace(/^data:text\/html;charset=utf-8,/, ''));
+              pdfWindow.document.open();
+              pdfWindow.document.write(decoded);
+              pdfWindow.document.close();
+            } else {
+              pdfWindow.location.href = res.url;
+            }
           } else {
             pdfWindow.close();
             alert("Erro ao gerar PDF: " + res.error);
@@ -14099,7 +14640,18 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
-            pdfWindow.location.href = res.url;
+            if (res.html) {
+              pdfWindow.document.open();
+              pdfWindow.document.write(res.html);
+              pdfWindow.document.close();
+            } else if (res.url && res.url.startsWith('data:')) {
+              var decoded = decodeURIComponent(res.url.replace(/^data:text\/html;charset=utf-8,/, ''));
+              pdfWindow.document.open();
+              pdfWindow.document.write(decoded);
+              pdfWindow.document.close();
+            } else {
+              pdfWindow.location.href = res.url;
+            }
           } else {
             pdfWindow.close();
             alert("Erro ao gerar PDF: " + res.error);
@@ -14237,7 +14789,18 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
-            pdfWindow.location.href = res.url;
+            if (res.html) {
+              pdfWindow.document.open();
+              pdfWindow.document.write(res.html);
+              pdfWindow.document.close();
+            } else if (res.url && res.url.startsWith('data:')) {
+              var decoded = decodeURIComponent(res.url.replace(/^data:text\/html;charset=utf-8,/, ''));
+              pdfWindow.document.open();
+              pdfWindow.document.write(decoded);
+              pdfWindow.document.close();
+            } else {
+              pdfWindow.location.href = res.url;
+            }
           } else {
             pdfWindow.close();
             alert("Erro ao gerar PDF: " + res.error);
@@ -14409,7 +14972,18 @@
         .withSuccessHandler(function(res) {
           hideLoading();
           if (res.success) {
-            pdfWindow.location.href = res.url;
+            if (res.html) {
+              pdfWindow.document.open();
+              pdfWindow.document.write(res.html);
+              pdfWindow.document.close();
+            } else if (res.url && res.url.startsWith('data:')) {
+              var decoded = decodeURIComponent(res.url.replace(/^data:text\/html;charset=utf-8,/, ''));
+              pdfWindow.document.open();
+              pdfWindow.document.write(decoded);
+              pdfWindow.document.close();
+            } else {
+              pdfWindow.location.href = res.url;
+            }
           } else {
             pdfWindow.close();
             alert("Erro ao gerar PDF: " + res.error);

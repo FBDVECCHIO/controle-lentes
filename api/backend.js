@@ -2251,7 +2251,7 @@ async function generateDailySummaryPDF(dateStr, loggedUser) {
     var username = getUserUsername(loggedUser);
     await logAction(username || "admin", "Gerou resumo de vendas PDF do dia: " + displayDate);
     
-    return { success: true, url: downloadUrl };
+    return { success: true, url: downloadUrl, html: printableHtml };
   } catch (e) {
     return { success: false, error: e.toString() };
   }
@@ -3251,7 +3251,7 @@ async function generateSalePDF(os, loggedUser) {
     var username = getUserUsername(loggedUser);
     await logAction(username || "admin", "Gerou PDF da OS: " + os);
     
-    return { success: true, url: downloadUrl };
+    return { success: true, url: downloadUrl, html: printableHtml };
   } catch(e) {
     return { success: false, error: e.toString() };
   }
@@ -3314,7 +3314,7 @@ async function generateTableReportPDF(title, headers, rows, isLandscape, loggedU
     
     await logAction(username, "Gerou relatório PDF: " + title);
     
-    return { success: true, url: downloadUrl };
+    return { success: true, url: downloadUrl, html: printableHtml };
   } catch (e) {
     return { success: false, error: e.toString() };
   }
