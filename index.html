@@ -3077,6 +3077,19 @@
               </div>
             </div>
 
+            <!-- Banner de Filtro Cruzado Ativo (Estilo Power BI) -->
+            <div id="ocoActiveChartFilterBar" style="display:none; margin-bottom: 14px; background: linear-gradient(135deg, rgba(30, 58, 138, 0.4), rgba(15, 23, 42, 0.7)); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 10px 14px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; background: #3b82f6; color: #ffffff; padding: 3px 8px; border-radius: 4px; letter-spacing: 0.5px; display:inline-flex; align-items:center; gap:5px;">
+                  <i class="fa-solid fa-filter"></i> Filtro Cruzado Ativo
+                </span>
+                <span id="ocoActiveFilterDesc" style="font-size: 13px; color: #f8fafc; font-weight: 600;"></span>
+              </div>
+              <button type="button" class="btn btn-sm" onclick="clearOcoCrossFilter()" style="padding: 4px 12px; font-size: 11.5px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 6px; color: #fca5a5; cursor: pointer; display:inline-flex; align-items:center; gap:6px; font-weight:700;">
+                <i class="fa-solid fa-xmark"></i> Limpar Filtro Cruzado
+              </button>
+            </div>
+
             <!-- KPIs de Prejuízo -->
             <div class="grid-4" style="margin-bottom: 16px;">
               <div class="kpi-card" style="border-left: 4px solid var(--danger);">
@@ -3120,7 +3133,7 @@
                   <span><i class="fa-solid fa-chart-pie" style="color:#ef4444;"></i> Prejuízo por Motivo</span>
                   <span id="badgeOcoMotivoCount" style="font-size:11px; background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:10px; color:var(--text-muted);">0 motivos</span>
                 </div>
-                <div style="height: 260px; position: relative; display: flex; justify-content: center; align-items: center;">
+                <div style="height: 285px; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden;">
                   <canvas id="chartOcoMotivo"></canvas>
                 </div>
               </div>
@@ -3131,7 +3144,7 @@
                   <span><i class="fa-solid fa-store" style="color:#3b82f6;"></i> Prejuízo por Loja</span>
                   <span id="badgeOcoLojaCount" style="font-size:11px; background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:10px; color:var(--text-muted);">0 lojas</span>
                 </div>
-                <div style="height: 260px; position: relative;">
+                <div style="height: 285px; position: relative; overflow: hidden;">
                   <canvas id="chartOcoLoja"></canvas>
                 </div>
               </div>
@@ -3142,7 +3155,7 @@
                   <span><i class="fa-solid fa-glasses" style="color:#10b981;"></i> Prejuízo por Item / Lente</span>
                   <span id="badgeOcoItemCount" style="font-size:11px; background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:10px; color:var(--text-muted);">Top itens</span>
                 </div>
-                <div style="height: 260px; position: relative;">
+                <div style="height: 285px; position: relative; overflow: hidden;">
                   <canvas id="chartOcoItem"></canvas>
                 </div>
               </div>
@@ -5545,6 +5558,27 @@
     var chartOcoMotivoInst = null;
     var chartOcoLojaInst = null;
     var chartOcoItemInst = null;
+    var activeOcoChartFilter = { type: null, value: null };
+    var currentFilteredOcorrencias = [];
+
+    function toggleOcoCrossFilter(type, value) {
+      if (!type || !value) return;
+      if (activeOcoChartFilter.type === type && activeOcoChartFilter.value === value) {
+        activeOcoChartFilter.type = null;
+        activeOcoChartFilter.value = null;
+      } else {
+        activeOcoChartFilter.type = type;
+        activeOcoChartFilter.value = value;
+      }
+      renderOcorrenciasTable(true);
+    }
+
+    function clearOcoCrossFilter() {
+      activeOcoChartFilter.type = null;
+      activeOcoChartFilter.value = null;
+      renderOcorrenciasTable(true);
+    }
+    var chartOcoItemInst = null;
     var currentFilteredOcorrencias = [];
 
     function renderPaginationControls(containerId, currentPage, totalPages, onPageChangeName) {
@@ -5833,10 +5867,6 @@
     var chartLeadLojasInst = null;
     var chartLeadCampanhasInst = null;
     var chartLeadPagamentosInst = null;
-    var chartOcoMotivoInst = null;
-    var chartOcoLojaInst = null;
-    var chartOcoItemInst = null;
-    var currentFilteredOcorrencias = [];
     function setupUppercaseInputs() {
       var ids = ['clientNome', 'orcClienteNome', 'userNome', 'prodNome', 'userUsername', 'campaignNome', 'campaignAro', 'campaignLente', 'leadNome'];
       ids.forEach(function(id) {
@@ -8548,7 +8578,25 @@
           if (benObsEl) benObsEl.value = details.beneficioObs || "";
           
           // Preencher dados do pedido original no Card 1
-          buscarDadosVendaOco(o.os);
+          if (details.lenteOriginal || details.labOriginal) {
+            var labOrigEl = document.getElementById("ocoLabOriginal");
+            if (labOrigEl) labOrigEl.value = details.labOriginal || "";
+            var lenteOrigEl = document.getElementById("ocoLenteOriginal");
+            if (lenteOrigEl) lenteOrigEl.value = details.lenteOriginal || "";
+            var qtyOrigEl = document.getElementById("ocoQtddOriginal");
+            if (qtyOrigEl) qtyOrigEl.value = details.qtddOriginal || "1";
+            var pLenteOrigEl = document.getElementById("ocoPrecoLenteOriginal");
+            if (pLenteOrigEl) pLenteOrigEl.value = (Number(details.precoLenteOriginal) || 0).toFixed(2);
+            var tratOrigEl = document.getElementById("ocoTratamentoOriginal");
+            if (tratOrigEl) tratOrigEl.value = details.tratamentoOriginal || "";
+            var pTratOrigEl = document.getElementById("ocoPrecoTratamentoOriginal");
+            if (pTratOrigEl) pTratOrigEl.value = (Number(details.precoTratamentoOriginal) || 0).toFixed(2);
+            var custoTotOrigEl = document.getElementById("ocoCustoOriginalTotal");
+            if (custoTotOrigEl) custoTotOrigEl.value = (Number(details.custoOriginalTotal) || 0).toFixed(2);
+            calcularCustoAdicionalOco();
+          } else {
+            buscarDadosVendaOco(o.os);
+          }
         }
         
         var ocoForm = document.getElementById("ocoForm");
@@ -8812,7 +8860,16 @@
           obs: obs,
           bonificacao: bonificacao,
           cortesia: cortesia,
-          beneficioObs: beneficioObs
+          beneficioObs: beneficioObs,
+          // Dados do Pedido Original para Comparativo De -> Para (Troca de Produto / Não Adaptação)
+          labOriginal: document.getElementById("ocoLabOriginal") ? document.getElementById("ocoLabOriginal").value.trim() : "",
+          lenteOriginal: document.getElementById("ocoLenteOriginal") ? document.getElementById("ocoLenteOriginal").value.trim() : "",
+          qtddOriginal: document.getElementById("ocoQtddOriginal") ? document.getElementById("ocoQtddOriginal").value.trim() : "1",
+          precoLenteOriginal: document.getElementById("ocoPrecoLenteOriginal") ? (parseFloat(document.getElementById("ocoPrecoLenteOriginal").value) || 0) : 0,
+          tratamentoOriginal: document.getElementById("ocoTratamentoOriginal") ? document.getElementById("ocoTratamentoOriginal").value.trim() : "",
+          precoTratamentoOriginal: document.getElementById("ocoPrecoTratamentoOriginal") ? (parseFloat(document.getElementById("ocoPrecoTratamentoOriginal").value) || 0) : 0,
+          custoOriginalTotal: document.getElementById("ocoCustoOriginalTotal") ? (parseFloat(document.getElementById("ocoCustoOriginalTotal").value) || 0) : 0,
+          totalNovo: document.getElementById("ocoTotalNovo") ? (parseFloat(document.getElementById("ocoTotalNovo").value) || 0) : 0
         }
       };
       
@@ -9083,38 +9140,80 @@
       }
       
       // Salvar lista filtrada globalmente para sincronização de exportação
+      // Salvar lista base filtrada pelos controles de formulário
+      var baseFiltered = filtered.slice();
+
+      // Identificar os Top 5 motivos no escopo base (para tratamento consistente do agrupador "Outros Motivos")
+      var baseMotivoCounts = {};
+      for (var b = 0; b < baseFiltered.length; b++) {
+        var bMk = (baseFiltered[b].motivo || "Não informado").trim();
+        var bC = Number(baseFiltered[b].custoAdicional || baseFiltered[b].custo_adicional) || 0;
+        baseMotivoCounts[bMk] = (baseMotivoCounts[bMk] || 0) + bC;
+      }
+      var sortedBaseMotivos = Object.keys(baseMotivoCounts).sort(function(x, y) {
+        return baseMotivoCounts[y] - baseMotivoCounts[x];
+      });
+      var top5MotivosGlobal = sortedBaseMotivos.slice(0, 5);
+
+      // Aplicação do Filtro Cruzado Interativo (Estilo Power BI por clique nos gráficos)
+      var activeFilterBar = document.getElementById("ocoActiveChartFilterBar");
+      var activeFilterDesc = document.getElementById("ocoActiveFilterDesc");
+
+      if (activeOcoChartFilter && activeOcoChartFilter.type && activeOcoChartFilter.value) {
+        if (activeFilterBar) activeFilterBar.style.display = "flex";
+        var tNome = activeOcoChartFilter.type === "motivo" ? "Motivo" : (activeOcoChartFilter.type === "loja" ? "Loja" : "Item / Lente");
+        if (activeFilterDesc) {
+          activeFilterDesc.innerHTML = "Filtro por <strong>" + tNome + ":</strong> <span style=\"color:#60a5fa; font-weight:700;\">" + activeOcoChartFilter.value + "</span>";
+        }
+
+        filtered = baseFiltered.filter(function(o) {
+          if (activeOcoChartFilter.type === "motivo") {
+            var mKey = (o.motivo || "Não informado").trim();
+            if (activeOcoChartFilter.value === "Outros Motivos") {
+              return top5MotivosGlobal.indexOf(mKey) === -1;
+            }
+            return mKey.toLowerCase() === activeOcoChartFilter.value.toLowerCase();
+          }
+          if (activeOcoChartFilter.type === "loja") {
+            var lKey = (o.loja || "Não informada").trim();
+            return lKey.toLowerCase() === activeOcoChartFilter.value.toLowerCase();
+          }
+          if (activeOcoChartFilter.type === "item") {
+            var dObj = o.detalhes || {};
+            var itemKey = (dObj.lente || "Lente não informada").trim();
+            return itemKey.toLowerCase() === activeOcoChartFilter.value.toLowerCase();
+          }
+          return true;
+        });
+      } else {
+        if (activeFilterBar) activeFilterBar.style.display = "none";
+      }
+
+      // Salvar lista filtrada globalmente para sincronização de exportação
       currentFilteredOcorrencias = filtered;
 
-      // Calcular consolidados de prejuízo e agrupamentos para Dashboard e Totalizador
+      // Calcular consolidados de prejuízo do conjunto filtrado ativo para KPIs e Totalizador
       var totalPrejuizoFiltrado = 0;
-      var prejuizoPorMotivo = {};
-      var prejuizoPorLoja = {};
-      var prejuizoPorItem = {};
-
       for (var f = 0; f < filtered.length; f++) {
         var oItem = filtered[f];
         var custo = Number(oItem.custoAdicional || oItem.custo_adicional) || 0;
         totalPrejuizoFiltrado += custo;
-
-        var mKey = (oItem.motivo || "Não informado").trim();
-        prejuizoPorMotivo[mKey] = (prejuizoPorMotivo[mKey] || 0) + custo;
-
-        var lKey = (oItem.loja || "Não informada").trim();
-        prejuizoPorLoja[lKey] = (prejuizoPorLoja[lKey] || 0) + custo;
-
-        var dObj = oItem.detalhes || {};
-        var itemKey = (dObj.lente || "Lente não informada").trim();
-        prejuizoPorItem[itemKey] = (prejuizoPorItem[itemKey] || 0) + custo;
       }
 
       var ticketMedioPrejuizo = filtered.length > 0 ? (totalPrejuizoFiltrado / filtered.length) : 0;
 
-      // Identificar o maior ofensor por motivo
+      // Identificar o maior ofensor por motivo no escopo filtrado
+      var motivoCountsFiltered = {};
+      for (var mf = 0; mf < filtered.length; mf++) {
+        var mfK = (filtered[mf].motivo || "Não informado").trim();
+        var mfC = Number(filtered[mf].custoAdicional || filtered[mf].custo_adicional) || 0;
+        motivoCountsFiltered[mfK] = (motivoCountsFiltered[mfK] || 0) + mfC;
+      }
       var topMotivoNome = "-";
       var topMotivoVal = 0;
-      for (var mk in prejuizoPorMotivo) {
-        if (prejuizoPorMotivo[mk] > topMotivoVal) {
-          topMotivoVal = prejuizoPorMotivo[mk];
+      for (var mk in motivoCountsFiltered) {
+        if (motivoCountsFiltered[mk] > topMotivoVal) {
+          topMotivoVal = motivoCountsFiltered[mk];
           topMotivoNome = mk;
         }
       }
@@ -9139,6 +9238,34 @@
         elKpiOfensor.title = topMotivoNome + (topMotivoVal > 0 ? " (" + fmtBRL(topMotivoVal) + ")" : "");
       }
 
+      // Preparação dos conjuntos de dados dos 3 gráficos (Sincronização cruzada Power BI)
+      var dataForMotivos = (activeOcoChartFilter.type === "motivo") ? baseFiltered : filtered;
+      var prejuizoPorMotivo = {};
+      var totalMotivoSum = 0;
+      for (var fMot = 0; fMot < dataForMotivos.length; fMot++) {
+        var cM = Number(dataForMotivos[fMot].custoAdicional || dataForMotivos[fMot].custo_adicional) || 0;
+        totalMotivoSum += cM;
+        var mkK = (dataForMotivos[fMot].motivo || "Não informado").trim();
+        prejuizoPorMotivo[mkK] = (prejuizoPorMotivo[mkK] || 0) + cM;
+      }
+
+      var dataForLojas = (activeOcoChartFilter.type === "loja") ? baseFiltered : filtered;
+      var prejuizoPorLoja = {};
+      for (var fLoj = 0; fLoj < dataForLojas.length; fLoj++) {
+        var cL = Number(dataForLojas[fLoj].custoAdicional || dataForLojas[fLoj].custo_adicional) || 0;
+        var lkK = (dataForLojas[fLoj].loja || "Não informada").trim();
+        prejuizoPorLoja[lkK] = (prejuizoPorLoja[lkK] || 0) + cL;
+      }
+
+      var dataForItens = (activeOcoChartFilter.type === "item") ? baseFiltered : filtered;
+      var prejuizoPorItem = {};
+      for (var fItm = 0; fItm < dataForItens.length; fItm++) {
+        var cI = Number(dataForItens[fItm].custoAdicional || dataForItens[fItm].custo_adicional) || 0;
+        var dI = dataForItens[fItm].detalhes || {};
+        var itkK = (dI.lente || "Lente não informada").trim();
+        prejuizoPorItem[itkK] = (prejuizoPorItem[itkK] || 0) + cI;
+      }
+
       // Atualizar Badges de contagem dos gráficos
       var bMot = document.getElementById("badgeOcoMotivoCount");
       if (bMot) bMot.textContent = Object.keys(prejuizoPorMotivo).length + " motivos";
@@ -9161,8 +9288,15 @@
         elFootTotal.textContent = fmtBRL(totalPrejuizoFiltrado);
       }
 
-      // Atualizar Gráficos Chart.js do Dashboard de Prejuízo
-      updateOcorrenciasCharts(prejuizoPorMotivo, prejuizoPorLoja, prejuizoPorItem, totalPrejuizoFiltrado);
+      // Atualizar Gráficos Chart.js do Dashboard de Prejuízo com Interatividade Power BI
+      updateOcorrenciasCharts({
+        prejuizoPorMotivo: prejuizoPorMotivo,
+        prejuizoPorLoja: prejuizoPorLoja,
+        prejuizoPorItem: prejuizoPorItem,
+        totalMotivoSum: totalMotivoSum,
+        totalPrejuizoFiltrado: totalPrejuizoFiltrado,
+        top5MotivosGlobal: top5MotivosGlobal
+      }, activeOcoChartFilter);
 
       var itemsPerPage = 25;
       var totalPages = Math.ceil(filtered.length / itemsPerPage) || 1;
@@ -9226,14 +9360,123 @@
           var bBadge = details.bonificacao 
             ? '<span style="color:#10b981; font-weight:700;"><i class="fa-solid fa-gift"></i> Bonificação</span>' 
             : '<span style="color:#3b82f6; font-weight:700;"><i class="fa-solid fa-handshake"></i> Cortesia</span>';
-          beneficioHtml = '<div style="margin-top:8px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.08);">' +
+          beneficioHtml = '<div style="margin-top:8px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.08); font-size:11px;">' +
             '<strong>Benefício do Laboratório:</strong> ' + bBadge + 
             (details.beneficioObs ? '<br><strong>Obs. Benefício:</strong> <span style="color:var(--text-main); font-style:italic;">' + details.beneficioObs + '</span>' : '') +
           '</div>';
         }
-        
+
+        // Recuperação dos dados do Pedido Original para Comparativo De -> Para (Troca de Produto / Não Adaptação)
+        var labOrig = details.labOriginal || "";
+        var lenteOrig = details.lenteOriginal || "";
+        var tratOrig = details.tratamentoOriginal || "";
+        var precoLenteOrig = Number(details.precoLenteOriginal) || 0;
+        var precoTratOrig = Number(details.precoTratamentoOriginal) || 0;
+        var custoOrigTotal = Number(details.custoOriginalTotal) || (precoLenteOrig + precoTratOrig);
+
+        if (!lenteOrig && o.os) {
+          var osSearch = (o.os || "").toString().toUpperCase().trim();
+          var confOrig = (appData.lancamentos || []).find(function(l) {
+            return (l.osLoja || "").toString().toUpperCase().trim() === osSearch;
+          });
+          var vendaOrig = (appData.vendas || []).find(function(v) {
+            return (v.osVenda || "").toString().toUpperCase().trim() === osSearch;
+          });
+          if (confOrig) {
+            labOrig = confOrig.labEfetivo || confOrig.labPedido || confOrig.laboratorio || "";
+            lenteOrig = confOrig.lenteEfetiva || confOrig.lente || "";
+            tratOrig = confOrig.tratEfetivo || confOrig.tratamento || "";
+            if (confOrig.semTratamentoEf === "SIM" || confOrig.semTratamento === "SIM") tratOrig = "Sem Tratamento";
+            var pLo = Number(confOrig.precoLenteEfetiva !== undefined ? confOrig.precoLenteEfetiva : (confOrig.precoLente || 0));
+            var pTo = Number(confOrig.precoTratEfetivo !== undefined ? confOrig.precoTratEfetivo : (confOrig.precoTratamento || 0));
+            custoOrigTotal = pLo + pTo;
+            precoLenteOrig = pLo;
+            precoTratOrig = pTo;
+          } else if (vendaOrig) {
+            labOrig = vendaOrig.laboratorio || vendaOrig.lab || "";
+            lenteOrig = vendaOrig.lente || "";
+            tratOrig = vendaOrig.tratamento || "";
+            custoOrigTotal = Number(vendaOrig.custoLente || vendaOrig.custo || 0);
+          }
+        }
+
+        var labNovo = details.lab || o.lab || "-";
+        var lenteNova = details.lente || "-";
+        var tratNovo = details.semTratamento ? "Sem Tratamento" : (details.tratamento || "Sem Tratamento");
+        var precoLenteNovo = Number(details.precoLente) || 0;
+        var precoTratNovo = details.semTratamento ? 0 : (Number(details.precoTratamento) || 0);
+        var custoNovoTotal = Number(details.totalNovo) || (precoLenteNovo + precoTratNovo);
+        var custoAdicReal = Number(o.custoAdicional || o.custo_adicional) || 0;
+
+        var motivoStr = (o.motivo || "");
+        var isNaoAdaptacao = motivoStr.toLowerCase().indexOf("adapta") !== -1 || motivoStr.toLowerCase().indexOf("troca") !== -1;
+
+        var deParaCardHtml = 
+          '<div style="background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.75)); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">' +
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px; flex-wrap:wrap; gap:6px;">' +
+              '<div style="font-weight: 700; color: #60a5fa; font-size: 12px; display:flex; align-items:center; gap:6px;">' +
+                '<i class="fa-solid fa-right-left"></i> Comparativo De ➔ Para (Troca de Produto / Não Adaptação)' +
+              '</div>' +
+              '<div style="display:flex; align-items:center; gap:6px;">' +
+                (isNaoAdaptacao ? '<span style="background:rgba(239,68,68,0.2); color:#fca5a5; border:1px solid rgba(239,68,68,0.4); padding:2px 8px; border-radius:10px; font-weight:700; font-size:10px;"><i class="fa-solid fa-triangle-exclamation"></i> Não Adaptação</span>' : '') +
+                '<span style="font-size: 10.5px; background: rgba(59, 130, 246, 0.18); color: #93c5fd; padding: 2px 8px; border-radius: 6px; font-weight:600;"><i class="fa-solid fa-handshake"></i> Diálogo & Acordo Fornecedor</span>' +
+              '</div>' +
+            '</div>' +
+            '<div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: stretch;">' +
+              '<!-- Lente Anterior (DE) -->' +
+              '<div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-left: 4px solid #ef4444; border-radius: 6px; padding: 8px 12px; display:flex; flex-direction:column; justify-content:space-between;">' +
+                '<div>' +
+                  '<div style="font-size: 10px; font-weight: 800; color: #f87171; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; display:flex; align-items:center; gap:4px;">' +
+                    '<i class="fa-solid fa-clock-rotate-left"></i> DE (Lente / Pedido Original)' +
+                  '</div>' +
+                  '<div style="font-size: 12.5px; font-weight: 700; color: #f8fafc; margin-bottom: 3px; word-break: break-word;">' +
+                    (lenteOrig || '<span style="color:#94a3b8; font-style:italic;">Não localizada no pedido</span>') +
+                  '</div>' +
+                  '<div style="font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">' +
+                    '<strong>Tratamento:</strong> ' + (tratOrig || "Sem Tratamento") +
+                  '</div>' +
+                '</div>' +
+                '<div style="font-size: 10.5px; color: #94a3b8; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 5px; margin-top: 4px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">' +
+                  '<span><strong>Lab:</strong> ' + (labOrig || "-") + '</span>' +
+                  '<span><strong>Custo Orig.:</strong> R$ ' + custoOrigTotal.toFixed(2) + '</span>' +
+                '</div>' +
+              '</div>' +
+
+              '<!-- Seta de Transição -->' +
+              '<div style="display: flex; flex-direction:column; justify-content: center; align-items: center; padding: 0 4px;">' +
+                '<div style="width: 30px; height: 30px; border-radius: 50%; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); display: flex; align-items: center; justify-content: center; color: #60a5fa; font-size: 13px;">' +
+                  '<i class="fa-solid fa-arrow-right"></i>' +
+                '</div>' +
+                '<span style="font-size: 9px; color: #94a3b8; font-weight: 700; margin-top: 4px; text-transform: uppercase;">Troca</span>' +
+              '</div>' +
+
+              '<!-- Nova Lente Solicitada (PARA) -->' +
+              '<div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-left: 4px solid #10b981; border-radius: 6px; padding: 8px 12px; display:flex; flex-direction:column; justify-content:space-between;">' +
+                '<div>' +
+                  '<div style="font-size: 10px; font-weight: 800; color: #34d399; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; display:flex; align-items:center; gap:4px;">' +
+                    '<i class="fa-solid fa-circle-check"></i> PARA (Nova Lente Solicitada)' +
+                  '</div>' +
+                  '<div style="font-size: 12.5px; font-weight: 700; color: #f8fafc; margin-bottom: 3px; word-break: break-word;">' +
+                    (lenteNova || '<span style="color:#94a3b8; font-style:italic;">Não especificada</span>') +
+                  '</div>' +
+                  '<div style="font-size: 11px; color: #cbd5e1; margin-bottom: 4px;">' +
+                    '<strong>Tratamento:</strong> ' + tratNovo +
+                  '</div>' +
+                '</div>' +
+                '<div style="font-size: 10.5px; color: #94a3b8; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 5px; margin-top: 4px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">' +
+                  '<span><strong>Lab:</strong> ' + labNovo + '</span>' +
+                  '<span><strong>Custo Novo:</strong> R$ ' + custoNovoTotal.toFixed(2) + '</span>' +
+                  '<span style="color: ' + (custoAdicReal > 0 ? "#f87171" : "#34d399") + '; font-weight: 700;">' +
+                    (custoAdicReal >= 0 ? "+ Adic.:" : "Crédito:") + " R$ " + Math.abs(custoAdicReal).toFixed(2) +
+                  '</span>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+
         var detailsHtml = 
-          '<td colspan="10" style="font-size:11.5px; color:var(--text-muted); padding:12px 16px; border-top:none; line-height:1.6;">' +
+          '<td colspan="10" style="font-size:11.5px; color:var(--text-muted); padding:14px 16px; border-top:none; line-height:1.6;">' +
+            deParaCardHtml +
             '<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">' +
               '<div>' +
                 '<strong>Laboratório Ocorrência:</strong> ' + (details.lab || "-") + '<br>' +
@@ -9256,9 +9499,17 @@
       renderPaginationControls("ocorrenciasPagination", currentPageOcorrencias, totalPages, "changePageOcorrencias");
     }
 
-    // Renderização dinâmica dos 3 gráficos de Prejuízo do Dashboard
-    function updateOcorrenciasCharts(prejuizoPorMotivo, prejuizoPorLoja, prejuizoPorItem, totalPrejuizoFiltrado) {
-      if (typeof Chart === 'undefined') return;
+    // Renderização dinâmica dos 3 gráficos de Prejuízo do Dashboard com Interatividade Power BI e Otimização Visual
+    function updateOcorrenciasCharts(chartsData, activeFilter) {
+      if (typeof Chart === "undefined") return;
+
+      var prejuizoPorMotivo = (chartsData && chartsData.prejuizoPorMotivo) || {};
+      var prejuizoPorLoja = (chartsData && chartsData.prejuizoPorLoja) || {};
+      var prejuizoPorItem = (chartsData && chartsData.prejuizoPorItem) || {};
+      var totalMotivoSum = (chartsData && chartsData.totalMotivoSum) || 0;
+      var totalPrejuizoFiltrado = (chartsData && chartsData.totalPrejuizoFiltrado) || 0;
+      var activeType = (activeFilter && activeFilter.type) || null;
+      var activeVal = (activeFilter && activeFilter.value) || null;
 
       // 1. Gráfico por Motivo (Doughnut)
       var motivoKeys = Object.keys(prejuizoPorMotivo || {});
@@ -9286,6 +9537,27 @@
         }
       }
 
+      var basePalette = ["#EF4444", "#F59E0B", "#3B82F6", "#8B5CF6", "#10B981", "#64748B"];
+      var sliceOffsets = [];
+      var sliceBorderWidths = [];
+      var sliceBorderColors = [];
+      var sliceBgColors = [];
+
+      for (var m = 0; m < motivoLabels.length; m++) {
+        var mLabel = motivoLabels[m];
+        var isSelected = activeType === "motivo" && activeVal && (activeVal.toLowerCase() === mLabel.toLowerCase());
+        sliceOffsets.push(isSelected ? 16 : 0);
+        sliceBorderWidths.push(isSelected ? 3 : 2);
+        sliceBorderColors.push(isSelected ? "#FFFFFF" : "#1e293b");
+        
+        var baseColor = basePalette[m % basePalette.length];
+        if (activeType === "motivo") {
+          sliceBgColors.push(isSelected ? baseColor : (baseColor + "4D"));
+        } else {
+          sliceBgColors.push(baseColor);
+        }
+      }
+
       if (chartOcoMotivoInst) {
         chartOcoMotivoInst.destroy();
         chartOcoMotivoInst = null;
@@ -9294,46 +9566,78 @@
       var canvasMotivo = document.getElementById("chartOcoMotivo");
       if (canvasMotivo) {
         var ctxMotivo = canvasMotivo.getContext("2d");
-        var motivoColors = ['#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6', '#10B981', '#6B7280'];
-        
         chartOcoMotivoInst = new Chart(ctxMotivo, {
-          type: 'doughnut',
+          type: "doughnut",
           data: {
-            labels: motivoLabels.length > 0 ? motivoLabels : ['Sem dados'],
+            labels: motivoLabels.length > 0 ? motivoLabels : ["Sem dados"],
             datasets: [{
               data: motivoData.length > 0 ? motivoData : [0],
-              backgroundColor: motivoLabels.length > 0 ? motivoColors.slice(0, motivoLabels.length) : ['#334155'],
-              borderWidth: 2,
-              borderColor: '#1e293b'
+              backgroundColor: motivoLabels.length > 0 ? sliceBgColors : ["#334155"],
+              offset: sliceOffsets,
+              borderWidth: sliceBorderWidths,
+              borderColor: sliceBorderColors
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            cutout: "62%",
+            layout: {
+              padding: 12
+            },
+            onClick: function(evt, elements) {
+              if (!elements || elements.length === 0) return;
+              var idx = elements[0].index;
+              if (motivoLabels[idx] && motivoLabels[idx] !== "Sem dados") {
+                toggleOcoCrossFilter("motivo", motivoLabels[idx]);
+              }
+            },
+            onHover: function(evt, elements) {
+              if (evt && evt.native && evt.native.target) {
+                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+              }
+            },
             plugins: {
               legend: {
-                position: 'right',
-                labels: { color: '#F8FAFC', font: { size: 10, family: 'sans-serif' }, boxWidth: 12 }
+                position: "right",
+                labels: {
+                  color: "#F8FAFC",
+                  font: { size: 10, family: "inherit" },
+                  boxWidth: 10,
+                  padding: 8,
+                  generateLabels: function(chart) {
+                    var original = Chart.overrides.doughnut.plugins.legend.labels.generateLabels(chart);
+                    original.forEach(function(item) {
+                      if (item.text && item.text.length > 18) {
+                        item.text = item.text.substring(0, 16) + "...";
+                      }
+                    });
+                    return original;
+                  }
+                }
               },
               tooltip: {
                 callbacks: {
                   label: function(ctx) {
                     var val = ctx.raw || 0;
-                    var pct = totalPrejuizoFiltrado > 0 ? ((val / totalPrejuizoFiltrado) * 100).toFixed(1) + '%' : '0%';
-                    return ' ' + ctx.label + ': R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + pct + ')';
+                    var totalRef = totalMotivoSum > 0 ? totalMotivoSum : (totalPrejuizoFiltrado > 0 ? totalPrejuizoFiltrado : 1);
+                    var pct = ((val / totalRef) * 100).toFixed(1) + "%";
+                    return " " + ctx.label + ": R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " (" + pct + ")";
                   }
                 }
               },
               datalabels: {
                 display: function(ctx) {
                   var v = ctx.dataset.data[ctx.dataIndex];
-                  return totalPrejuizoFiltrado > 0 && (v / totalPrejuizoFiltrado) >= 0.08;
+                  var totalRef = totalMotivoSum > 0 ? totalMotivoSum : totalPrejuizoFiltrado;
+                  return totalRef > 0 && (v / totalRef) >= 0.08;
                 },
-                color: '#FFFFFF',
-                font: { weight: 'bold', size: 10 },
+                color: "#FFFFFF",
+                font: { weight: "bold", size: 10 },
                 formatter: function(val) {
-                  if (!totalPrejuizoFiltrado) return '';
-                  return ((val / totalPrejuizoFiltrado) * 100).toFixed(0) + '%';
+                  var totalRef = totalMotivoSum > 0 ? totalMotivoSum : totalPrejuizoFiltrado;
+                  if (!totalRef) return "";
+                  return ((val / totalRef) * 100).toFixed(0) + "%";
                 }
               }
             }
@@ -9349,10 +9653,31 @@
 
       var lojaLabels = [];
       var lojaData = [];
+      var lojaBgColors = [];
+      var lojaBorderColors = [];
+      var lojaBorderWidths = [];
+
       for (var l = 0; l < lojaKeys.length; l++) {
         var lk = lojaKeys[l];
         lojaLabels.push(lk);
         lojaData.push(prejuizoPorLoja[lk] || 0);
+
+        var isSelectedLoja = activeType === "loja" && activeVal && (activeVal.toLowerCase() === lk.toLowerCase());
+        if (activeType === "loja") {
+          if (isSelectedLoja) {
+            lojaBgColors.push("#3B82F6");
+            lojaBorderColors.push("#FFFFFF");
+            lojaBorderWidths.push(2);
+          } else {
+            lojaBgColors.push("rgba(59, 130, 246, 0.28)");
+            lojaBorderColors.push("transparent");
+            lojaBorderWidths.push(0);
+          }
+        } else {
+          lojaBgColors.push("#3B82F6");
+          lojaBorderColors.push("transparent");
+          lojaBorderWidths.push(0);
+        }
       }
 
       if (chartOcoLojaInst) {
@@ -9364,44 +9689,82 @@
       if (canvasLoja) {
         var ctxLoja = canvasLoja.getContext("2d");
         chartOcoLojaInst = new Chart(ctxLoja, {
-          type: 'bar',
+          type: "bar",
           data: {
-            labels: lojaLabels.length > 0 ? lojaLabels : ['Sem dados'],
+            labels: lojaLabels.length > 0 ? lojaLabels : ["Sem dados"],
             datasets: [{
-              label: 'Prejuízo (R$)',
+              label: "Prejuízo (R$)",
               data: lojaData.length > 0 ? lojaData : [0],
-              backgroundColor: '#3B82F6',
+              backgroundColor: lojaLabels.length > 0 ? lojaBgColors : ["#334155"],
+              borderColor: lojaBorderColors,
+              borderWidth: lojaBorderWidths,
               borderRadius: 6,
-              maxBarThickness: 36
+              maxBarThickness: 38
             }]
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+              padding: { top: 28, right: 12, bottom: 6, left: 6 }
+            },
+            onClick: function(evt, elements) {
+              if (!elements || elements.length === 0) return;
+              var idx = elements[0].index;
+              if (lojaLabels[idx] && lojaLabels[idx] !== "Sem dados") {
+                toggleOcoCrossFilter("loja", lojaLabels[idx]);
+              }
+            },
+            onHover: function(evt, elements) {
+              if (evt && evt.native && evt.native.target) {
+                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+              }
+            },
             plugins: {
               legend: { display: false },
               tooltip: {
                 callbacks: {
                   label: function(ctx) {
                     var val = ctx.raw || 0;
-                    return ' Prejuízo: R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    return " Prejuízo: R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                   }
                 }
               },
               datalabels: {
-                color: '#93C5FD',
-                anchor: 'end',
-                align: 'top',
+                color: "#93C5FD",
+                anchor: "end",
+                align: "top",
                 offset: 2,
-                font: { weight: 'bold', size: 10 },
+                font: { weight: "bold", size: 10 },
                 formatter: function(val) {
-                  return val > 0 ? 'R$' + Math.round(val) : '';
+                  return val > 0 ? "R$" + Math.round(val).toLocaleString("pt-BR") : "";
                 }
               }
             },
             scales: {
-              x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8', font: { size: 10 } } },
-              y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8', font: { size: 10 } }, beginAtZero: true }
+              x: {
+                grid: { display: false },
+                ticks: {
+                  color: "#E2E8F0",
+                  font: { size: 10, weight: "600" },
+                  callback: function(val, index) {
+                    var lbl = this.getLabelForValue(val);
+                    return lbl.length > 14 ? (lbl.substring(0, 12) + "..") : lbl;
+                  }
+                }
+              },
+              y: {
+                beginAtZero: true,
+                grace: "18%",
+                grid: { color: "rgba(255,255,255,0.06)" },
+                ticks: {
+                  color: "#94A3B8",
+                  font: { size: 9.5 },
+                  callback: function(v) {
+                    return "R$ " + (v >= 1000 ? (v / 1000).toFixed(1) + "k" : v);
+                  }
+                }
+              }
             }
           }
         });
@@ -9416,11 +9779,32 @@
       var topItems = itemKeys.slice(0, 6);
       var itemLabels = [];
       var itemData = [];
+      var itemBgColors = [];
+      var itemBorderColors = [];
+      var itemBorderWidths = [];
+
       for (var it = 0; it < topItems.length; it++) {
         var itk = topItems[it];
-        var shortLabel = itk.length > 22 ? (itk.substring(0, 20) + '...') : itk;
+        var shortLabel = itk.length > 20 ? (itk.substring(0, 18) + "...") : itk;
         itemLabels.push(shortLabel);
         itemData.push(prejuizoPorItem[itk] || 0);
+
+        var isSelectedItem = activeType === "item" && activeVal && (activeVal.toLowerCase() === itk.toLowerCase());
+        if (activeType === "item") {
+          if (isSelectedItem) {
+            itemBgColors.push("#10B981");
+            itemBorderColors.push("#FFFFFF");
+            itemBorderWidths.push(2);
+          } else {
+            itemBgColors.push("rgba(16, 185, 129, 0.28)");
+            itemBorderColors.push("transparent");
+            itemBorderWidths.push(0);
+          }
+        } else {
+          itemBgColors.push("#10B981");
+          itemBorderColors.push("transparent");
+          itemBorderWidths.push(0);
+        }
       }
 
       if (chartOcoItemInst) {
@@ -9432,50 +9816,83 @@
       if (canvasItem) {
         var ctxItem = canvasItem.getContext("2d");
         chartOcoItemInst = new Chart(ctxItem, {
-          type: 'bar',
+          type: "bar",
           data: {
-            labels: itemLabels.length > 0 ? itemLabels : ['Sem dados'],
+            labels: itemLabels.length > 0 ? itemLabels : ["Sem dados"],
             datasets: [{
-              label: 'Custo Adicional (R$)',
+              label: "Custo Adicional (R$)",
               data: itemData.length > 0 ? itemData : [0],
-              backgroundColor: '#10B981',
+              backgroundColor: itemLabels.length > 0 ? itemBgColors : ["#334155"],
+              borderColor: itemBorderColors,
+              borderWidth: itemBorderWidths,
               borderRadius: 6,
               maxBarThickness: 28
             }]
           },
           options: {
-            indexAxis: 'y',
+            indexAxis: "y",
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+              padding: { top: 6, right: 60, bottom: 6, left: 6 }
+            },
+            onClick: function(evt, elements) {
+              if (!elements || elements.length === 0) return;
+              var idx = elements[0].index;
+              var fullItem = topItems[idx] || itemLabels[idx];
+              if (fullItem && fullItem !== "Sem dados") {
+                toggleOcoCrossFilter("item", fullItem);
+              }
+            },
+            onHover: function(evt, elements) {
+              if (evt && evt.native && evt.native.target) {
+                evt.native.target.style.cursor = elements.length ? "pointer" : "default";
+              }
+            },
             plugins: {
               legend: { display: false },
               tooltip: {
                 callbacks: {
                   title: function(items) {
-                    if (!items || items.length === 0) return '';
+                    if (!items || items.length === 0) return "";
                     var idx = items[0].dataIndex;
                     return topItems[idx] || items[0].label;
                   },
                   label: function(ctx) {
                     var val = ctx.raw || 0;
-                    return ' Custo: R$ ' + Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    return " Custo: R$ " + Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                   }
                 }
               },
               datalabels: {
-                color: '#6EE7B7',
-                anchor: 'end',
-                align: 'right',
+                color: "#6EE7B7",
+                anchor: "end",
+                align: "right",
                 offset: 4,
-                font: { weight: 'bold', size: 9.5 },
+                clip: false,
+                font: { weight: "bold", size: 9.5 },
                 formatter: function(val) {
-                  return val > 0 ? 'R$' + Math.round(val) : '';
+                  return val > 0 ? "R$" + Math.round(val).toLocaleString("pt-BR") : "";
                 }
               }
             },
             scales: {
-              x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8', font: { size: 9.5 } }, beginAtZero: true },
-              y: { grid: { display: false }, ticks: { color: '#F8FAFC', font: { size: 9.5 } } }
+              x: {
+                beginAtZero: true,
+                grace: "20%",
+                grid: { color: "rgba(255,255,255,0.06)" },
+                ticks: {
+                  color: "#94A3B8",
+                  font: { size: 9.5 },
+                  callback: function(v) {
+                    return "R$ " + (v >= 1000 ? (v / 1000).toFixed(1) + "k" : v);
+                  }
+                }
+              },
+              y: {
+                grid: { display: false },
+                ticks: { color: "#F8FAFC", font: { size: 9.5 } }
+              }
             }
           }
         });
@@ -9546,6 +9963,10 @@
       if (fVend && fVend !== "Todos") filtroDesc.push("Vendedor: " + fVend);
       if (fMotivo && fMotivo !== "Todos") filtroDesc.push("Motivo: " + fMotivo);
       if (fBusca) filtroDesc.push('Busca: "' + fBusca + '"');
+      if (activeOcoChartFilter && activeOcoChartFilter.type && activeOcoChartFilter.value) {
+        var tLbl = activeOcoChartFilter.type === "motivo" ? "Motivo" : (activeOcoChartFilter.type === "loja" ? "Loja" : "Item / Lente");
+        filtroDesc.push("Filtro Cruzado (" + tLbl + "): " + activeOcoChartFilter.value);
+      }
       if (selectedIds.length > 0) filtroDesc.push(selectedIds.length + " item(ns) selecionado(s) manualmente");
 
       var printWindow = window.open("", "_blank");
@@ -9645,6 +10066,9 @@
         var motText = (item.motivo || "-") + bInfo;
         var lenteText = d.lente || "-";
         if (d.tratamento && !d.semTratamento) lenteText += " + " + d.tratamento;
+        if (d.lenteOriginal) {
+          lenteText = '<span style="color:#ef4444; font-size:8.5px;">[De: ' + d.lenteOriginal + ']</span><br><span style="color:#10b981; font-weight:700;">➔ [Para: ' + (d.lente || "-") + ']</span>';
+        }
         
         var cVal = Number(item.custoAdicional || item.custo_adicional) || 0;
         

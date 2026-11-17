@@ -62,7 +62,7 @@ async function runOptimizationsVerification() {
   assert(JSON.stringify(vercelConfig.headers || []).includes('immutable'),
     "vercel.json configura cache imutável de 1 ano para /vendor/*");
 
-  assert(swContent.includes("lentes-cache-v6") || swContent.includes("lentes-cache-v5"), "service-worker.js atualizado para lentes-cache-v6");
+  assert(swContent.includes("lentes-cache-v7") || swContent.includes("lentes-cache-v6"), "service-worker.js atualizado para lentes-cache-v7");
   assert(swContent.includes("event.request.method !== 'GET'") && swContent.includes("'/api/'"),
     "service-worker.js ignora imediatamente mutações POST e rotas /api/ (zero overhead no SW)");
   assert(swContent.includes("./vendor/chart.min.js") && swContent.includes("./vendor/chartjs-plugin-datalabels.min.js"),
