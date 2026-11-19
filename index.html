@@ -8637,6 +8637,13 @@
       var origText = document.getElementById("ocoLenteOrigemText");
       if (origText) origText.innerText = "-";
       toggleSemTratamentoOco();
+      
+      isSavingOcorrencia = false;
+      var btnSubmit = document.getElementById("btnSalvarOco");
+      if (btnSubmit) {
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Salvar Ocorrência';
+      }
     }
 
     function submitOcorrenciaForm(event) {
@@ -8810,8 +8817,15 @@
       buscarDadosVendaOco(os);
     }
 
+    var isSavingOcorrencia = false;
+
     function salvarOcorrencia(event) {
       if (event) event.preventDefault();
+      
+      if (isSavingOcorrencia) {
+        console.warn("[salvarOcorrencia] Gravação já em andamento. Aguarde conclusão.");
+        return;
+      }
       
       var id = document.getElementById("ocoId").value;
       var os = document.getElementById("ocoOS").value.trim();
@@ -8837,6 +8851,22 @@
       if (!os || !loja || !dataInput || !motivo) {
         alert("Preencha todos os campos obrigatórios.");
         return;
+      }
+      
+      isSavingOcorrencia = true;
+      var btnSubmit = document.getElementById("btnSalvarOco");
+      var originalBtnHtml = btnSubmit ? btnSubmit.innerHTML : "";
+      if (btnSubmit) {
+        btnSubmit.disabled = true;
+        btnSubmit.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gravando...';
+      }
+
+      function restoreBtn() {
+        isSavingOcorrencia = false;
+        if (btnSubmit) {
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = originalBtnHtml || (id ? '<i class="fa-solid fa-floppy-disk"></i> Salvar Alterações' : '<i class="fa-solid fa-floppy-disk"></i> Salvar Ocorrência');
+        }
       }
       
       var dataParts = dataInput.split('-');
@@ -8883,6 +8913,7 @@
       
       if (typeof google === 'undefined' || !google.script) {
         hideLoading();
+        restoreBtn();
         fecharModalOcorrencia();
         if (id) {
           var idx = (appData.ocorrencias || []).findIndex(function(x) { return Number(x.id) === Number(id); });
@@ -8901,6 +8932,7 @@
       
       google.script.run
         .withSuccessHandler(function(res) {
+          restoreBtn();
           if (!checkSession(res)) return;
           if (res.success) {
             fecharModalOcorrencia();
@@ -8911,6 +8943,7 @@
           }
         })
         .withFailureHandler(function(err) {
+          restoreBtn();
           hideLoading();
           alert("Erro no servidor: " + err.toString());
         })
